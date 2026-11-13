@@ -1,10 +1,14 @@
 from typing import Optional, Dict, Any, Tuple
+import asyncio
 import json
 import time
 import jwt
 from jwt.jwks_client import PyJWKClient
 import httpx
 from redis.asyncio import Redis as AsyncRedis
+
+OIDC_STATE_TTL = 600  # 10 minutes for login transaction
+SESSION_LOCK_TTL = 10  # seconds for refresh serialization lock
 
 class Session:
     """Domain class for managing user sessions"""
@@ -81,6 +85,18 @@ class Session:
             print(f"Error deleting session {session_id}: {str(e)}")
             return False
 
+    def _server_url(self) -> str:
+        """Public OIDC server URL used for browser redirects and issuer validation."""
+        return self.oidc_config['server_url']
+
+    def _internal_url(self) -> str:
+        """Internal OIDC URL used for token exchange and JWKS fetch."""
+        return self.oidc_config.get('internal_url') or self.oidc_config['server_url']
+
+    def get_issuer(self) -> str:
+        """Expected JWT issuer for this realm."""
+        return f"{self._server_url()}/realms/{self.oidc_config['realm']}"
+
     def get_auth_url(self) -> str:
         """
         Generate the authentication URL for OIDC login.
@@ -88,7 +104,7 @@ class Session:
         Returns:
             The authentication URL
         """
-        auth_url = f"{self.oidc_config['server_url']}/realms/{self.oidc_config['realm']}/protocol/openid-connect/auth"
+        auth_url = f"{self._server_url()}/realms/{self.oidc_config['realm']}/protocol/openid-connect/auth"
         params = {
             'client_id': self.oidc_config['client_id'],
             'response_type': 'code',
@@ -104,7 +120,7 @@ class Session:
         Returns:
             The token endpoint URL
         """
-        return f"{self.oidc_config['server_url']}/realms/{self.oidc_config['realm']}/protocol/openid-connect/token"
+        return f"{self._internal_url()}/realms/{self.oidc_config['realm']}/protocol/openid-connect/token"
 
     def is_token_expired(self, token_data: Dict[str, Any], buffer_seconds: int = 30) -> bool:
         """
@@ -142,6 +158,30 @@ class Session:
         except Exception as e:
             print(f"Error checking token expiration: {str(e)}")
             return True
+
+    def _refresh_lock_key(self, session_id: str) -> str:
+        return f"session_lock:{session_id}"
+
+    async def acquire_refresh_lock(self, session_id: str) -> bool:
+        """Try to acquire a per-session refresh lock (SET NX EX)."""
+        try:
+            result = await self.redis_client.set(
+                self._refresh_lock_key(session_id),
+                "1",
+                nx=True,
+                ex=SESSION_LOCK_TTL
+            )
+            return result is not None
+        except Exception as e:
+            print(f"Error acquiring refresh lock: {str(e)}")
+            return False
+
+    async def release_refresh_lock(self, session_id: str) -> None:
+        """Release the per-session refresh lock."""
+        try:
+            await self.redis_client.delete(self._refresh_lock_key(session_id))
+        except Exception as e:
+            print(f"Error releasing refresh lock: {str(e)}")
 
     async def refresh_token(self, session_id: str, token_data: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
         """
@@ -187,6 +227,41 @@ class Session:
             print(f"Error refreshing token: {str(e)}")
             return False, token_data
 
+    async def refresh_token_with_lock(self, session_id: str, token_data: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Serialize token refresh for a session. If this caller wins the lock, it
+        performs the refresh. If another caller holds the lock, we poll the
+        stored session up to SESSION_LOCK_TTL seconds and return the refreshed
+        data without consuming another refresh token.
+        """
+        if not token_data or 'refresh_token' not in token_data:
+            return False, token_data
+
+        lock_acquired = await self.acquire_refresh_lock(session_id)
+        if lock_acquired:
+            try:
+                # Re-read session under the lock in case another worker refreshed
+                # between our read and lock acquisition.
+                current_data = await self.get(session_id)
+                if current_data and not self.is_token_expired(current_data):
+                    return True, current_data
+                if current_data:
+                    token_data = current_data
+                return await self.refresh_token(session_id, token_data)
+            finally:
+                await self.release_refresh_lock(session_id)
+
+        # Another request is refreshing; wait for it to finish and re-read.
+        waited = 0.0
+        while waited < SESSION_LOCK_TTL:
+            await asyncio.sleep(0.1)
+            waited += 0.1
+            current_data = await self.get(session_id)
+            if current_data and not self.is_token_expired(current_data):
+                return True, current_data
+
+        return False, token_data
+
     def _get_jwks_client(self) -> PyJWKClient:
         """
         Get or create a PyJWKClient for token verification.
@@ -195,7 +270,7 @@ class Session:
             The JWKs client
         """
         if self._jwks_client is None:
-            jwks_url = f"{self.oidc_config['server_url']}/realms/{self.oidc_config['realm']}/protocol/openid-connect/certs"
+            jwks_url = f"{self._internal_url()}/realms/{self.oidc_config['realm']}/protocol/openid-connect/certs"
             self._jwks_client = PyJWKClient(jwks_url)
         return self._jwks_client
 
@@ -224,8 +299,9 @@ class Session:
                 }
                 session_data['events'].append(event)
                 
-                # Update session with new event
-                return await self.set(session_id, session_data, session_data.get('expires_in', 3600))
+                # Update session with new event, preserving the refresh lifetime.
+                ttl = session_data.get('refresh_expires_in') or session_data.get('expires_in', 3600)
+                return await self.set(session_id, session_data, ttl)
             return False
         except Exception as e:
             print(f"Error tracking event {event_type} for session {session_id}: {str(e)}")

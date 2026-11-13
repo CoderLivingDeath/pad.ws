@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Request, HTTPException, Depends
 
 from cache import RedisClient
+from config import OIDC_INTERNAL_URL, PAD_ALLOWED_ROLES, SESSION_COOKIE_NAME
 from domain.session import Session
 from domain.user import User
 from domain.pad import Pad
@@ -17,6 +18,7 @@ from database.database import get_session
 # oidc_config for session creation and user sessions
 oidc_config = {
     'server_url': os.getenv('OIDC_SERVER_URL'),
+    'internal_url': OIDC_INTERNAL_URL,
     'realm': os.getenv('OIDC_REALM'),
     'client_id': os.getenv('OIDC_CLIENT_ID'),
     'client_secret': os.getenv('OIDC_CLIENT_SECRET'),
@@ -47,7 +49,8 @@ class UserSession:
                 access_token,
                 signing_key.key,
                 algorithms=["RS256"],
-                audience=oidc_config['client_id']
+                audience=oidc_config['client_id'],
+                issuer=self._session_domain.get_issuer()
             )
             
         except jwt.InvalidTokenError as e:
@@ -116,7 +119,7 @@ class AuthDependency:
 
     async def __call__(self, request: Request) -> Optional[UserSession]:
         # Get session ID from cookies
-        session_id = request.cookies.get('session_id')
+        session_id = request.cookies.get(SESSION_COOKIE_NAME)
         
         # Get session domain instance
         current_session_domain = await get_session_domain()
@@ -132,8 +135,8 @@ class AuthDependency:
             
         # Handle token expiration
         if current_session_domain.is_token_expired(session_data):
-            # Try to refresh the token
-            success, new_session_data = await current_session_domain.refresh_token(session_id, session_data)
+            # Try to refresh the token using the serialized refresh path
+            success, new_session_data = await current_session_domain.refresh_token_with_lock(session_id, session_data)
             if not success:
                 return self._handle_auth_error("Session expired")
             session_data = new_session_data
@@ -166,6 +169,69 @@ class AuthDependency:
 require_auth = AuthDependency(auto_error=True)
 optional_auth = AuthDependency(auto_error=False)
 require_admin = AuthDependency(auto_error=True, require_admin=True)
+
+
+def is_user_provisioned(token_data: Dict[str, Any]) -> bool:
+    """
+    Check whether an authenticated user is provisioned for Pad access.
+    When PAD_ALLOWED_ROLES is empty, every authenticated user is allowed.
+    """
+    if not PAD_ALLOWED_ROLES:
+        return True
+    user_roles = set(token_data.get("realm_access", {}).get("roles", []))
+    return bool(set(PAD_ALLOWED_ROLES).intersection(user_roles))
+
+
+async def get_verified_user(request: Request) -> Tuple[str, Optional[UserSession]]:
+    """
+    Verify the session cookie for the verify endpoint.
+
+    Returns:
+        ("ok", user_session)               if the session is valid and provisioned
+        ("forbidden", None)                if the session is valid but not provisioned
+        ("unauthenticated", None)          if the session is missing, invalid or expired
+    """
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_id:
+        return "unauthenticated", None
+
+    current_session_domain = await get_session_domain()
+    session_data = await current_session_domain.get(session_id)
+    if not session_data:
+        return "unauthenticated", None
+
+    if current_session_domain.is_token_expired(session_data):
+        success, new_session_data = await current_session_domain.refresh_token_with_lock(
+            session_id, session_data
+        )
+        if not success:
+            return "unauthenticated", None
+        session_data = new_session_data
+
+    try:
+        user_session = UserSession(
+            access_token=session_data.get('access_token'),
+            token_data=session_data,
+            session_domain=current_session_domain
+        )
+    except ValueError:
+        return "unauthenticated", None
+
+    if not is_user_provisioned(user_session.token_data):
+        return "forbidden", None
+
+    return "ok", user_session
+
+
+def get_identity_headers(user_session: UserSession) -> Dict[str, str]:
+    """Headers returned by the verify endpoint for Caddy."""
+    return {
+        "X-Pad-User": str(user_session.id),
+        "X-Pad-Roles": ",".join(user_session.roles),
+        "X-Pad-Admin": "true" if user_session.is_admin else "false",
+        "Cache-Control": "no-store",
+    }
+
 
 def get_coder_api():
     """

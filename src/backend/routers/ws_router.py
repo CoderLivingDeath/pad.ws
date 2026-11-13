@@ -11,10 +11,13 @@ from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dependencies import UserSession, get_session_domain, PadAccess
+from config import FRONTEND_URL, DEV_FRONTEND_URL, PAD_DEV_MODE, SESSION_COOKIE_NAME
 from cache import RedisClient
 from domain.pad import Pad
 from database.database import async_session
 ws_router = APIRouter()
+
+_WS_SESSION_REVALIDATION_INTERVAL = 30  # seconds, must not exceed 60
 
 STREAM_EXPIRY = 3600
 PAD_USERS_EXPIRY = 3600  # Expiry time for the pad users hash
@@ -47,22 +50,22 @@ class WebSocketMessage(BaseModel):
 async def get_ws_user(websocket: WebSocket) -> Optional[UserSession]:
     """WebSocket-specific authentication dependency"""
     try:
-        session_id = websocket.cookies.get('session_id')
+        session_id = websocket.cookies.get(SESSION_COOKIE_NAME)
         if not session_id:
             return None
-        
+
         current_session_domain = await get_session_domain()
-            
+
         session_data = await current_session_domain.get(session_id)
         if not session_data:
             return None
-            
+
         if current_session_domain.is_token_expired(session_data):
-            success, new_session_data = await current_session_domain.refresh_token(session_id, session_data)
+            success, new_session_data = await current_session_domain.refresh_token_with_lock(session_id, session_data)
             if not success:
                 return None
             session_data = new_session_data
-        
+
         return UserSession(
             access_token=session_data.get('access_token'),
             token_data=session_data,
@@ -132,12 +135,30 @@ async def periodic_auth_check(
     connection_id: str,
     session: AsyncSession
 ):
-    """Periodically check if the user still has access to the pad."""
+    """Periodically check if the user still has access to the pad and session."""
+    iterations = 0
     while websocket.client_state.CONNECTED:
         try:
+            iterations += 1
+            # Revalidate the session at most every _WS_SESSION_REVALIDATION_INTERVAL seconds.
+            if iterations % _WS_SESSION_REVALIDATION_INTERVAL == 0:
+                revalidated_user = await get_ws_user(websocket)
+                if not revalidated_user:
+                    reason = "Session expired or revoked"
+                    disconnect_message = WebSocketMessage(
+                        type="force_disconnect",
+                        pad_id=str(pad_id),
+                        user_id=str(user.id),
+                        connection_id=connection_id,
+                        data={"reason": reason}
+                    )
+                    await publish_event_to_redis(redis_client, stream_key, disconnect_message)
+                    await websocket.close(code=4001, reason=reason)
+                    break
+
             # Check pad access
             has_access, error_reason = await check_pad_access(pad_id, user, session)
-            
+
             if not has_access:
                 # Create a disconnect message
                 disconnect_message = WebSocketMessage(
@@ -152,11 +173,11 @@ async def periodic_auth_check(
                 # Close the websocket
                 await websocket.close(code=4003, reason=error_reason)
                 break
-                
+
         except Exception as e:
             print(f"Error in periodic auth check for {connection_id[:5]}: {e}")
             break
-            
+
         # Wait for 1 second before next check
         await asyncio.sleep(1)
 
@@ -337,6 +358,16 @@ async def remove_connection(redis_client: aioredis.Redis, pad_id: UUID, user_id:
     except Exception as e:
         print(f"Error removing connection from Redis: {e}")
 
+def _is_allowed_origin(origin: Optional[str]) -> bool:
+    """Allow the configured frontend origin and, in dev mode, the dev frontend."""
+    if not origin:
+        return False
+    allowed = {FRONTEND_URL}
+    if PAD_DEV_MODE and DEV_FRONTEND_URL:
+        allowed.add(DEV_FRONTEND_URL)
+    return origin.rstrip("/") in {a.rstrip("/") for a in allowed if a}
+
+
 @ws_router.websocket("/ws/pad/{pad_id}")
 async def websocket_endpoint(
     websocket: WebSocket,
@@ -344,6 +375,11 @@ async def websocket_endpoint(
     user: Optional[UserSession] = Depends(get_ws_user)
 ):
     """WebSocket endpoint for pad collaboration."""
+    origin = websocket.headers.get("origin")
+    if not _is_allowed_origin(origin):
+        await websocket.close(code=4004, reason="Invalid origin")
+        return
+
     if not user:
         await websocket.close(code=4001, reason="Authentication required")
         return
