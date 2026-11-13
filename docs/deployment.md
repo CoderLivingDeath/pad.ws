@@ -11,7 +11,6 @@
 | `CODER_DOMAIN` | Caddy, Pad, Coder | `coder.example.com` | `coder.pad.test` |
 | `COOKIE_DOMAIN` | Pad, Caddy | `.example.com` | `.pad.test` |
 | `CADDYFILE` | Compose | `deploy/Caddyfile` | `deploy/Caddyfile.local` |
-| `CADDY_TLS` | Caddy | `auto` | `internal` |
 | `ACME_EMAIL` | Caddy | operator email | `local@pad.test` |
 | `OIDC_SERVER_URL` | Pad, Coder, Keycloak | `https://auth.example.com` | `https://auth.pad.test` |
 | `OIDC_INTERNAL_URL` | Pad | `http://keycloak:8080` (default: `OIDC_SERVER_URL`) | `http://keycloak:8080` |

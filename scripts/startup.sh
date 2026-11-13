@@ -21,6 +21,8 @@ preflight() {
         OIDC_SERVER_URL
         REDIRECT_URI
         FRONTEND_URL
+        ADMIN_ALLOWLIST
+        ACME_EMAIL
     )
 
     local name value
@@ -41,9 +43,11 @@ preflight() {
 
     # The Coder host is protected behind the gateway in production. A shared
     # cookie domain is required so Pad can gate Coder without leaking host-only
-    # cookies that sibling hosts cannot receive.
-    if [[ ! "${COOKIE_DOMAIN}" =~ ^\. ]]; then
-        echo "PREFLIGHT FAILED: required environment variable must be a shared parent domain starting with '.': COOKIE_DOMAIN" >&2
+    # cookies that sibling hosts cannot receive. Accept both `.example.com` and
+    # `example.com`; browsers treat them the same.
+    local cookie_domain="${COOKIE_DOMAIN#.}"
+    if [[ "$cookie_domain" != *.* ]]; then
+        echo "PREFLIGHT FAILED: required environment variable must be a shared parent domain: COOKIE_DOMAIN" >&2
         exit 1
     fi
 }

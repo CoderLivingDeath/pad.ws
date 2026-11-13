@@ -26,7 +26,7 @@ if ! docker compose version >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! docker compose ps --services --filter status=running 2>/dev/null | grep -qx 'postgres'; then
+if ! docker compose ps --services --status running 2>/dev/null | grep -qx 'postgres'; then
     echo "Error: postgres service is not running" >&2
     exit 1
 fi
@@ -38,7 +38,7 @@ failed=()
 for db in "${databases[@]}"; do
     out="${BACKUP_DIR}/${db}_${timestamp}.sql.gz"
     echo "Backing up database: $db"
-    if docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$db" | gzip > "$out"; then
+    if docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$1"' _ "$db" | gzip > "$out"; then
         chmod 600 "$out"
         size="$(du -h "$out" | cut -f1)"
         echo "Created: $out ($size)"
