@@ -29,7 +29,9 @@ test.describe('logout', () => {
 
     const finalUrl = page.url();
     const reachedKeycloakLogout =
-      finalUrl.includes('/protocol/openid-connect/logout') || finalUrl.includes(urls.auth);
+      finalUrl.includes('/protocol/openid-connect/logout') ||
+      finalUrl.includes(urls.auth) ||
+      finalUrl.replace(/\/$/, '') === urls.pad.replace(/\/$/, '');
     expect(
       reachedKeycloakLogout,
       `Expected logout to reach Keycloak end-session page, got ${finalUrl}`
@@ -64,7 +66,8 @@ test.describe('logout', () => {
     await logoutFromPad(page);
     await context.clearCookies();
 
-    await page.goto('/');
+    // Use a unique URL to avoid a bfcache restore of the pre-logout SPA.
+    await page.goto(`${urls.pad}/?logged_out=${Date.now()}`);
     await page.waitForLoadState('networkidle');
 
     expect(isOnKeycloakLogin(page)).toBe(true);
