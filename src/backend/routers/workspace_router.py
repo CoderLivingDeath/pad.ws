@@ -1,4 +1,3 @@
-import os
 import json
 import time
 
@@ -8,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from dependencies import UserSession, require_auth, get_coder_api
 from coder import CoderAPI
-from config import STATIC_DIR
+from config import STATIC_DIR, CODER_URL
 
 workspace_router = APIRouter()
 
@@ -54,7 +53,7 @@ async def get_workspace_state(
         id=workspace_id,
         name=workspace_name,
         username=coder_username,
-        base_url=os.getenv("CODER_URL", ""),
+        base_url=CODER_URL or "",
         agent="main"
     )
 

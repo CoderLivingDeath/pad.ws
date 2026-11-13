@@ -3,7 +3,7 @@ import json
 import time
 
 from fastapi import APIRouter
-from config import STATIC_DIR
+from config import STATIC_DIR, CODER_URL
 
 app_router = APIRouter()
 
@@ -30,7 +30,7 @@ async def get_app_config():
     Return runtime configuration for the frontend
     """
     return {
-        "coderUrl": os.getenv("CODER_URL", ""),
+        "coderUrl": CODER_URL or "",
         "posthogKey": os.getenv("VITE_PUBLIC_POSTHOG_KEY", ""),
         "posthogHost": os.getenv("VITE_PUBLIC_POSTHOG_HOST", ""),
         "devMode": os.getenv("PAD_DEV_MODE", "false") == "true",

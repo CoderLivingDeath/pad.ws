@@ -1,7 +1,7 @@
 import requests
 import random
 from datetime import datetime
-from config import CODER_API_KEY, CODER_URL, CODER_TEMPLATE_ID, CODER_DEFAULT_ORGANIZATION, CODER_WORKSPACE_NAME
+from config import CODER_API_KEY, CODER_INTERNAL_URL, CODER_TEMPLATE_ID, CODER_DEFAULT_ORGANIZATION, CODER_WORKSPACE_NAME
 
 class CoderAPI:
     """
@@ -11,13 +11,13 @@ class CoderAPI:
     def __init__(self):
         # Get configuration from config
         self.api_key = CODER_API_KEY
-        self.coder_url = CODER_URL
+        self.coder_url = CODER_INTERNAL_URL
         self.template_id = CODER_TEMPLATE_ID
         self.default_organization_id = CODER_DEFAULT_ORGANIZATION
         
         # Check if required configuration variables are set
         if not self.api_key or not self.coder_url:
-            raise ValueError("CODER_API_KEY and CODER_URL must be set in environment variables")
+            raise ValueError("CODER_API_KEY and Coder API URL must be set in environment variables")
             
         # Set up common headers for API requests
         self.headers = {
