@@ -2,6 +2,7 @@ import os
 import json
 from contextlib import asynccontextmanager
 from typing import Optional
+from urllib.parse import urlparse
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,8 +15,8 @@ from fastapi.staticfiles import StaticFiles
 
 from database import init_db, engine
 from config import (
-    STATIC_DIR, ASSETS_DIR, POSTHOG_API_KEY, POSTHOG_HOST, 
-    PAD_DEV_MODE, DEV_FRONTEND_URL
+    STATIC_DIR, ASSETS_DIR, POSTHOG_API_KEY, POSTHOG_HOST,
+    PAD_DEV_MODE, FRONTEND_URL, DEV_FRONTEND_URL
 )
 from cache import RedisClient
 from dependencies import UserSession, optional_auth
@@ -63,13 +64,47 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# Only the configured frontend origin may receive credentialed CORS responses.
+# In development mode the dev server origin is also allowed.
+_allowed_cors_origins = [FRONTEND_URL] if FRONTEND_URL else []
+if PAD_DEV_MODE and DEV_FRONTEND_URL:
+    _allowed_cors_origins.append(DEV_FRONTEND_URL)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# CSRF origin validation: state-changing requests must carry an Origin or
+# Referer header that matches an allowed frontend origin. OPTIONS preflight
+# and safe methods bypass this check; logout is a GET and is also exempt.
+_CSRF_ALLOWED_ORIGINS = set(_allowed_cors_origins)
+
+@app.middleware("http")
+async def csrf_origin_validation(request: Request, call_next):
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return await call_next(request)
+
+    origin = request.headers.get("origin")
+    if origin:
+        if origin in _CSRF_ALLOWED_ORIGINS:
+            return await call_next(request)
+        return Response(status_code=403)
+
+    referer = request.headers.get("referer")
+    if referer:
+        parsed = urlparse(referer)
+        referer_origin = f"{parsed.scheme}://{parsed.netloc}"
+        if referer_origin in _CSRF_ALLOWED_ORIGINS:
+            return await call_next(request)
+        return Response(status_code=403)
+
+    return Response(status_code=403)
 
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

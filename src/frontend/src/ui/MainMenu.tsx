@@ -132,44 +132,10 @@ export const MainMenuConfig: React.FC<MainMenuConfigProps> = ({
 
     logoutMutation(undefined, {
       onSuccess: (data) => {
-        const keycloakLogoutUrl = data.logout_url;
-
-        const createIframeLoader = (url: string, debugName: string): Promise<void> => {
-          return new Promise<void>((resolve, reject) => {
-            const iframe = document.createElement("iframe");
-            iframe.style.display = "none";
-            iframe.src = url;
-            console.debug(`[pad.ws] (Silently) Priming ${debugName} logout for ${url}`);
-
-            let timeoutId: number | undefined;
-
-            const cleanup = (error?: any) => {
-              if (timeoutId) clearTimeout(timeoutId);
-              if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-              if (error) reject(error); else resolve();
-            };
-
-            iframe.onload = () => cleanup();
-            // Fallback: remove iframe after 2s if onload doesn't fire
-            timeoutId = window.setTimeout(() => cleanup(new Error(`${debugName} iframe load timed out`)), 5000);
-
-            iframe.onerror = (event) => { // event can be an ErrorEvent or string
-                const errorMsg = typeof event === 'string' ? event : (event instanceof ErrorEvent ? event.message : `Error loading ${debugName} iframe`);
-                cleanup(new Error(errorMsg));
-            };
-            document.body.appendChild(iframe);
-          });
-        };
-
-        const promises = [createIframeLoader(keycloakLogoutUrl, "Keycloak")];
-
-        Promise.all(promises)
-          .then(() => {
-            console.debug("[pad.ws] Keycloak iframe logout process completed successfully.");
-          })
-          .catch(err => {
-            console.error("[pad.ws] Error during iframe logout process:", err);
-          });
+        // Navigate to the IdP end-session URL returned by the backend. A full
+        // redirect is required because the landing page is gated and there is
+        // no anonymous fallback after the Pad session cookie is cleared.
+        window.location.assign(data.logout_url);
       },
       onError: (error) => {
         console.error("[pad.ws] Logout failed in MainMenu component:", error.message);
@@ -177,7 +143,7 @@ export const MainMenuConfig: React.FC<MainMenuConfigProps> = ({
     });
 
     excalidrawAPI.updateScene(INITIAL_APP_DATA);
-    
+
   };
 
   return (
