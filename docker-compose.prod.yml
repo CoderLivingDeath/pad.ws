@@ -1,0 +1,274 @@
+# Production topology for the Pad auth gateway.
+# Caddy is the only public ingress; all other services live on a private bridge network.
+# Use with .env.prod.template (production) or .env.local.template (*.pad.test acceptance).
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    expose:
+      - "80"
+      - "443"
+      - "443/udp"
+    volumes:
+      - ./${CADDYFILE}:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - pad
+    mem_limit: 256m
+    cpus: "0.5"
+    pids_limit: 100
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "caddy version"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    depends_on:
+      pad:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      coder:
+        condition: service_healthy
+
+  pad:
+    image: ghcr.io/pad-ws/pad.ws:main
+    container_name: pad
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "8000"
+    environment:
+      STATIC_DIR: ${STATIC_DIR}
+      ASSETS_DIR: ${ASSETS_DIR}
+      FRONTEND_URL: ${FRONTEND_URL}
+      PAD_DOMAIN: ${PAD_DOMAIN}
+      AUTH_DOMAIN: ${AUTH_DOMAIN}
+      CODER_DOMAIN: ${CODER_DOMAIN}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-session_id}
+      ADMIN_ALLOWLIST: ${ADMIN_ALLOWLIST}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-*}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      OIDC_SERVER_URL: ${OIDC_SERVER_URL}
+      OIDC_INTERNAL_URL: ${OIDC_INTERNAL_URL:-http://keycloak:8080}
+      OIDC_REALM: ${OIDC_REALM}
+      REDIRECT_URI: ${REDIRECT_URI}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      CODER_API_KEY: ${CODER_API_KEY}
+      CODER_URL: https://${CODER_DOMAIN}
+      CODER_INTERNAL_URL: ${CODER_INTERNAL_URL:-http://coder:7080}
+      CODER_TEMPLATE_ID: ${CODER_TEMPLATE_ID}
+      CODER_DEFAULT_ORGANIZATION: ${CODER_DEFAULT_ORGANIZATION}
+      CODER_WORKSPACE_NAME: ${CODER_WORKSPACE_NAME:-ubuntu}
+      API_WORKERS: ${API_WORKERS:-1}
+    networks:
+      - pad
+    mem_limit: 512m
+    cpus: "1.0"
+    pids_limit: 200
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "5432"
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - pad
+    mem_limit: 1g
+    cpus: "1.0"
+    pids_limit: 200
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD} --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - pad
+    mem_limit: 256m
+    cpus: "0.5"
+    pids_limit: 100
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: keycloak
+    restart: unless-stopped
+    command: start
+    env_file:
+      - .env
+    expose:
+      - "8080"
+      - "9000"
+    environment:
+      KC_HOSTNAME: https://${AUTH_DOMAIN}
+      KC_HOSTNAME_STRICT: "true"
+      KC_HOSTNAME_STRICT_HTTPS: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB}
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_HEALTH_ENABLED: "true"
+    networks:
+      - pad
+    mem_limit: 1g
+    cpus: "1.0"
+    pids_limit: 200
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  coder:
+    image: ghcr.io/coder/coder:latest
+    container_name: coder
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "7080"
+    environment:
+      CODER_ACCESS_URL: https://${CODER_DOMAIN}
+      CODER_HTTP_ADDRESS: 0.0.0.0:7080
+      CODER_OIDC_ISSUER_URL: https://${AUTH_DOMAIN}/realms/${OIDC_REALM}
+      CODER_OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      CODER_OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      CODER_OIDC_IGNORE_EMAIL_VERIFIED: "false"
+      CODER_ADDITIONAL_CSP_POLICY: frame-ancestors https://${PAD_DOMAIN}
+      CODER_PG_CONNECTION_URL: postgresql://${POSTGRES_USER}:${CODER_DB_PASSWORD_URLENCODED}@postgres:5432/${CODER_DB}?sslmode=disable
+      CODER_OAUTH2_GITHUB_DEFAULT_PROVIDER_ENABLED: "false"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - ${DOCKER_GROUP_ID}
+    networks:
+      - pad
+    mem_limit: 1g
+    cpus: "1.0"
+    pids_limit: 200
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:7080/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  pad:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
