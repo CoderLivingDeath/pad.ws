@@ -80,6 +80,13 @@
 		max_size 10MB
 	}
 
+	# Public Pad logout helper: clears the Coder session cookie without a Pad session.
+	# This must not proxy to Coder.
+	handle /__pad/logout {
+		header Set-Cookie "coder_session_token=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
+		respond 204
+	}
+
 	@coder_api path /api/v2/*
 	handle @coder_api {
 		request_header -X-Pad-*
