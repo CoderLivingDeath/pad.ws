@@ -336,7 +336,14 @@ async def logout(request: Request, session_domain: Session = Depends(get_session
     if logout_params:
         end_session_url = f"{end_session_url}?{urlencode(logout_params)}"
 
-    response = JSONResponse({"status": "success", "logout_url": end_session_url})
+    payload = {
+        "status": "success",
+        "logout_url": end_session_url,
+    }
+    if CODER_DOMAIN:
+        payload["coder_logout_url"] = f"https://{CODER_DOMAIN}/__pad/logout"
+
+    response = JSONResponse(payload)
     _clear_session_cookie(response)
     return response
 

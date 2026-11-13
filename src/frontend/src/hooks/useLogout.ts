@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 interface LogoutResponse {
   status: string;
   logout_url: string;
+  coder_logout_url?: string;
 }
 
 interface LogoutError extends Error {}

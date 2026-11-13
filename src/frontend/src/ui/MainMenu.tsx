@@ -127,15 +127,46 @@ export const MainMenuConfig: React.FC<MainMenuConfigProps> = ({
     setShowAccountModal(true);
   };
 
+  const clearCoderSessionAndRedirect = (coderLogoutUrl: string | undefined, keycloakLogoutUrl: string) => {
+    const redirectToKeycloak = () => {
+      window.location.assign(keycloakLogoutUrl);
+    };
+
+    if (!coderLogoutUrl) {
+      redirectToKeycloak();
+      return;
+    }
+
+    // Load the Coder logout helper in a hidden iframe to clear the
+    // coder_session_token cookie on the Coder host. This prevents the next Pad
+    // user on the same browser from inheriting the previous Coder session.
+    const iframe = document.createElement('iframe');
+    iframe.src = coderLogoutUrl;
+    iframe.style.display = 'none';
+    iframe.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(iframe);
+
+    const cleanup = () => {
+      try {
+        document.body.removeChild(iframe);
+      } catch {
+        // iframe may already be removed
+      }
+    };
+
+    // Proceed after a short timeout whether the iframe loaded or not.
+    window.setTimeout(() => {
+      cleanup();
+      redirectToKeycloak();
+    }, 1500);
+  };
+
   const handleLogout = () => {
     capture('logout_clicked');
 
     logoutMutation(undefined, {
       onSuccess: (data) => {
-        // Navigate to the IdP end-session URL returned by the backend. A full
-        // redirect is required because the landing page is gated and there is
-        // no anonymous fallback after the Pad session cookie is cleared.
-        window.location.assign(data.logout_url);
+        clearCoderSessionAndRedirect(data.coder_logout_url, data.logout_url);
       },
       onError: (error) => {
         console.error("[pad.ws] Logout failed in MainMenu component:", error.message);
