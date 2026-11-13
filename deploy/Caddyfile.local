@@ -101,7 +101,7 @@
 		}
 	}
 
-	@coder_api path /api/v2/* /derp /derp/*
+	@coder_api path /api/v2/* /derp /derp/* /@*
 	handle @coder_api {
 		request_header -X-Pad-*
 		reverse_proxy coder:7080 {

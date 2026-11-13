@@ -17,6 +17,12 @@ const fetchWorkspaceState = async (): Promise<WorkspaceState> => {
   try {
     const response = await fetch('/api/workspace/state');
 
+    if (response.status === 401) {
+      const rd = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.assign(`/api/auth/login?rd=${rd}`);
+      throw new Error('Session expired');
+    }
+
     if (!response.ok) {
       let errorMessage = `Failed to fetch workspace state. Status: ${response.status}`;
       try {

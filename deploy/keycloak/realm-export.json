@@ -397,5 +397,9 @@
     }
   ],
   "scopeMappings": [],
-  "clientScopeMappings": {}
+  "clientScopeMappings": {},
+  "ssoSessionIdleTimeout": 28800,
+  "ssoSessionMaxLifespan": 604800,
+  "clientSessionIdleTimeout": 28800,
+  "clientSessionMaxLifespan": 604800
 }
