@@ -89,6 +89,18 @@
 		respond 204
 	}
 
+	# Coder static assets are public (like Pad assets); the UI and API remain
+	# gated. This avoids cross-site cookie failures for asset subresources.
+	@coder_public path /assets/* /static/* /favicon.ico
+	handle @coder_public {
+		request_header -X-Pad-*
+		reverse_proxy coder:7080 {
+			import upstream_timeouts
+			header_up Cookie "(^|;\\s*){$SESSION_COOKIE_NAME}=[^;]*(;\\s*)?" "$1"
+			header_up -X-Pad-*
+		}
+	}
+
 	@coder_api path /api/v2/*
 	handle @coder_api {
 		request_header -X-Pad-*
