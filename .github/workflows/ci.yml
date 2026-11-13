@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, ws-test-env]
+    branches: [main]
     paths:
       - 'src/backend/**'
       - 'deploy/**'
@@ -37,14 +37,12 @@ jobs:
       - name: Generate test environment file
         run: |
           set -euo pipefail
-          oidc_secret="$(openssl rand -hex 32)"
           postgres_password="$(openssl rand -hex 16)"
           redis_password="$(openssl rand -hex 16)"
           keycloak_admin_password="$(openssl rand -hex 16)"
           coder_api_key="$(openssl rand -hex 32)"
           coder_db_password="$(openssl rand -hex 16)"
           sed \
-            -e "s/^OIDC_CLIENT_SECRET=__CHANGE_ME__$/OIDC_CLIENT_SECRET=${oidc_secret}/" \
             -e "s/^POSTGRES_PASSWORD=__CHANGE_ME__$/POSTGRES_PASSWORD=${postgres_password}/" \
             -e "s/^REDIS_PASSWORD=__CHANGE_ME__$/REDIS_PASSWORD=${redis_password}/" \
             -e "s/^KEYCLOAK_ADMIN_PASSWORD=__CHANGE_ME__$/KEYCLOAK_ADMIN_PASSWORD=${keycloak_admin_password}/" \
@@ -127,8 +125,19 @@ jobs:
       - name: Start test environment
         run: bash scripts/test-env.sh up
 
-      - name: Run blocking automated suites
-        run: pytest tests/integration tests/proxy tests/security -m "integration or proxy or security"
+      - name: Prepare host resolution and CA
+        run: |
+          sudo sh -c 'echo "127.0.0.1 pad.pad.test auth.pad.test coder.pad.test" >> /etc/hosts'
+          docker compose -f docker-compose.prod.yml -f compose.test.yml --env-file .env.test \
+            cp caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt
+
+      - name: Run integration suites
+        run: bash scripts/test-integration.sh
+
+      - name: Run proxy and security suites
+        env:
+          CA_BUNDLE: ${{ github.workspace }}/caddy-root.crt
+        run: pytest tests/proxy tests/security -m "proxy or security" -v
 
       - name: Run deployment checks
         run: bash tests/deploy/run-checks.sh
@@ -152,11 +161,14 @@ jobs:
       - name: Install Playwright
         run: |
           cd tests/e2e
-          npm ci
+          npm install
           npm exec playwright install --with-deps
 
       - name: Start test environment
         run: bash scripts/test-env.sh up
+
+      - name: Prepare host resolution
+        run: sudo sh -c 'echo "127.0.0.1 pad.pad.test auth.pad.test coder.pad.test" >> /etc/hosts'
 
       - name: Run E2E tests
         run: make test-e2e

@@ -4,7 +4,7 @@ test-unit:
 	@pytest tests/unit -v || { echo "Unit tests not yet implemented or pytest unavailable"; exit 1; }
 
 test-integration:
-	@pytest tests/integration -m integration -v || { echo "Integration tests require a running test environment (make test-env)"; exit 1; }
+	@bash scripts/test-integration.sh
 
 test-proxy:
 	@pytest tests/proxy -m proxy -v || { echo "Proxy tests require Caddy (make test-env)"; exit 1; }

@@ -205,7 +205,8 @@
       "optionalClientScopes": [
         "offline_access",
         "microprofile-jwt"
-      ]
+      ],
+      "secret": "pad-test-secret"
     }
   ],
   "clientScopes": [

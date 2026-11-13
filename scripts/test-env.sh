@@ -40,10 +40,9 @@ generate_env() {
         exit 1
     fi
 
-    local oidc_secret postgres_password redis_password keycloak_admin_password
+    local postgres_password redis_password keycloak_admin_password
     local coder_api_key coder_db_password docker_group_id
 
-    oidc_secret="$(openssl rand -hex 32)"
     postgres_password="$(openssl rand -hex 16)"
     redis_password="$(openssl rand -hex 16)"
     keycloak_admin_password="$(openssl rand -hex 16)"
@@ -58,7 +57,6 @@ generate_env() {
     coder_template="00000000-0000-0000-0000-000000000000"
 
     sed \
-        -e "s/^OIDC_CLIENT_SECRET=__CHANGE_ME__$/OIDC_CLIENT_SECRET=${oidc_secret}/" \
         -e "s/^POSTGRES_PASSWORD=__CHANGE_ME__$/POSTGRES_PASSWORD=${postgres_password}/" \
         -e "s/^REDIS_PASSWORD=__CHANGE_ME__$/REDIS_PASSWORD=${redis_password}/" \
         -e "s/^KEYCLOAK_ADMIN_PASSWORD=__CHANGE_ME__$/KEYCLOAK_ADMIN_PASSWORD=${keycloak_admin_password}/" \
