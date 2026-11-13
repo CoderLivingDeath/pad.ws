@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  push:
+    branches: [main, ws-test-env]
+    paths:
+      - 'src/backend/**'
+      - 'deploy/**'
+      - 'docker-compose.prod.yml'
+      - 'compose.test.yml'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'Makefile'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/backend/**'
+      - 'deploy/**'
+      - 'docker-compose.prod.yml'
+      - 'compose.test.yml'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'Makefile'
+      - '.github/workflows/**'
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  config:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+
+      - name: Generate test environment file
+        run: |
+          set -euo pipefail
+          oidc_secret="$(openssl rand -hex 32)"
+          postgres_password="$(openssl rand -hex 16)"
+          redis_password="$(openssl rand -hex 16)"
+          keycloak_admin_password="$(openssl rand -hex 16)"
+          coder_api_key="$(openssl rand -hex 32)"
+          coder_db_password="$(openssl rand -hex 16)"
+          sed \
+            -e "s/^OIDC_CLIENT_SECRET=__CHANGE_ME__$/OIDC_CLIENT_SECRET=${oidc_secret}/" \
+            -e "s/^POSTGRES_PASSWORD=__CHANGE_ME__$/POSTGRES_PASSWORD=${postgres_password}/" \
+            -e "s/^REDIS_PASSWORD=__CHANGE_ME__$/REDIS_PASSWORD=${redis_password}/" \
+            -e "s/^KEYCLOAK_ADMIN_PASSWORD=__CHANGE_ME__$/KEYCLOAK_ADMIN_PASSWORD=${keycloak_admin_password}/" \
+            -e "s/^CODER_API_KEY=__CHANGE_ME__$/CODER_API_KEY=${coder_api_key}/" \
+            -e "s/^CODER_DB_PASSWORD_URLENCODED=__CHANGE_ME__$/CODER_DB_PASSWORD_URLENCODED=${coder_db_password}/" \
+            -e "s/^DOCKER_GROUP_ID=__CHANGE_ME__$/DOCKER_GROUP_ID=999/" \
+            -e "s/^CODER_DEFAULT_ORGANIZATION=__CHANGE_ME__$/CODER_DEFAULT_ORGANIZATION=00000000-0000-0000-0000-000000000000/" \
+            -e "s/^CODER_TEMPLATE_ID=__CHANGE_ME__$/CODER_TEMPLATE_ID=00000000-0000-0000-0000-000000000000/" \
+            .env.local.template > .env.test
+          # docker-compose.prod.yml loads .env via env_file, so a .env must exist.
+          cp .env.test .env
+
+      - name: Validate compose configuration
+        run: docker compose -f docker-compose.prod.yml -f compose.test.yml --env-file .env.test config
+
+      - name: Validate production Caddyfile
+        run: |
+          docker run --rm \
+            -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -e PAD_DOMAIN=pad.example.com \
+            -e AUTH_DOMAIN=auth.example.com \
+            -e CODER_DOMAIN=coder.example.com \
+            -e ACME_EMAIL=ops@example.com \
+            -e SESSION_COOKIE_NAME=session_id \
+            -e ADMIN_ALLOWLIST="0.0.0.0/0 ::/0" \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+
+      - name: Validate local Caddyfile
+        run: |
+          docker run --rm \
+            -v "$PWD/deploy/Caddyfile.local:/etc/caddy/Caddyfile:ro" \
+            -e PAD_DOMAIN=pad.pad.test \
+            -e AUTH_DOMAIN=auth.pad.test \
+            -e CODER_DOMAIN=coder.pad.test \
+            -e ACME_EMAIL=local@pad.test \
+            -e SESSION_COOKIE_NAME=session_id \
+            -e ADMIN_ALLOWLIST="0.0.0.0/0 ::/0" \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+
+      - name: Check pinned actions
+        run: ./scripts/check-actions-pinned.sh
+
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+
+      - name: Set up Python
+        uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r src/backend/requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run unit tests
+        run: pytest tests/unit
+
+  stack:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+
+      - name: Set up Python
+        uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r src/backend/requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Start test environment
+        run: bash scripts/test-env.sh up
+
+      - name: Run blocking automated suites
+        run: pytest tests/integration tests/proxy tests/security -m "integration or proxy or security"
+
+      - name: Run deployment checks
+        run: bash tests/deploy/run-checks.sh
+
+      - name: Stop test environment
+        if: always()
+        run: bash scripts/test-env.sh down
+
+  e2e:
+    needs: stack
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+
+      - name: Install Playwright
+        run: |
+          cd tests/e2e
+          npm ci
+          npm exec playwright install --with-deps
+
+      - name: Start test environment
+        run: bash scripts/test-env.sh up
+
+      - name: Run E2E tests
+        run: make test-e2e
+
+      - name: Stop test environment
+        if: always()
+        run: bash scripts/test-env.sh down

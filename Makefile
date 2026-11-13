@@ -19,7 +19,6 @@ test-deploy:
 	@bash tests/deploy/run-checks.sh || { echo "Deploy checks require docker compose and a running or staging environment"; exit 1; }
 
 test-env:
-	@echo "Bootstrap the acceptance test environment on *.pad.test (to be implemented)."
-	@echo "When implemented this starts compose.test.yml, imports the realm and waits for health."
+	@bash scripts/test-env.sh up
 
 test-all: test-unit test-integration test-proxy test-e2e test-security test-deploy
