@@ -23,6 +23,7 @@ preflight() {
         FRONTEND_URL
         ADMIN_ALLOWLIST
         ACME_EMAIL
+        PAD_ALLOWED_ROLES
     )
 
     local name value

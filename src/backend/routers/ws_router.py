@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dependencies import UserSession, get_session_domain, PadAccess
+from dependencies import UserSession, get_session_domain, PadAccess, is_user_provisioned
 from config import FRONTEND_URL, DEV_FRONTEND_URL, PAD_DEV_MODE, SESSION_COOKIE_NAME
 from cache import RedisClient
 from domain.pad import Pad
@@ -66,11 +66,14 @@ async def get_ws_user(websocket: WebSocket) -> Optional[UserSession]:
                 return None
             session_data = new_session_data
 
-        return UserSession(
+        user_session = UserSession(
             access_token=session_data.get('access_token'),
             token_data=session_data,
             session_domain=current_session_domain
         )
+        if not is_user_provisioned(user_session.token_data):
+            return None
+        return user_session
     except Exception as e:
         print(f"Error in WebSocket authentication: {str(e)}")
         return None

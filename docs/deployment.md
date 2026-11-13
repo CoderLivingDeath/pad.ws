@@ -40,6 +40,7 @@
 | `CODER_DB_PASSWORD_URLENCODED` | Coder | URL-encoded password | `__CHANGE_ME__` |
 | `DOCKER_GROUP_ID` | Coder | host docker group ID | `__CHANGE_ME__` |
 | `ADMIN_ALLOWLIST` | Caddy | operator CIDRs | `0.0.0.0/0 ::/0` |
+| `PAD_ALLOWED_ROLES` | Pad | `pad-user` | `pad-user` |
 | `SESSION_COOKIE_NAME` | Pad, Caddy | `session_id` | `session_id` |
 | `TRUSTED_PROXY_IPS` | Pad | `*` or fixed Caddy IP | `*` |
 | `API_WORKERS` | Pad | `1` | `1` |

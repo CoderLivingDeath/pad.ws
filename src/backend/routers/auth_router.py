@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse, FileResponse, JSONResponse
 import os
 from typing import Optional
 import time
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse, quote, urlencode
 
 from config import (
     FRONTEND_URL,
@@ -315,16 +315,26 @@ async def logout(request: Request, session_domain: Session = Depends(get_session
     user-controlled redirect target.
     """
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    session_data = None
 
     if session_id:
+        session_data = await session_domain.get(session_id)
         await session_domain.track_event(session_id, 'logout')
         await session_domain.delete(session_id)
+
+    logout_params = {}
+    if session_data and session_data.get("id_token"):
+        logout_params["id_token_hint"] = session_data["id_token"]
+    if FRONTEND_URL:
+        logout_params["post_logout_redirect_uri"] = FRONTEND_URL
 
     end_session_url = (
         f"{session_domain.oidc_config['server_url']}"
         f"/realms/{session_domain.oidc_config['realm']}"
         f"/protocol/openid-connect/logout"
     )
+    if logout_params:
+        end_session_url = f"{end_session_url}?{urlencode(logout_params)}"
 
     response = JSONResponse({"status": "success", "logout_url": end_session_url})
     _clear_session_cookie(response)
