@@ -237,6 +237,14 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       // Mark as initial load for the new pad
       this.isInitialLoad = true;
 
+      // Flush the complete scene over the old socket before moving to the
+      // new pad. This is a best-effort live-collab checkpoint; the UI also
+      // persists via PUT /api/pad/{id}/data before switching.
+      if (this.props.excalidrawAPI && this.portal.isOpen()) {
+        const elements = this.props.excalidrawAPI.getSceneElementsIncludingDeleted();
+        this.portal.broadcastSceneUpdate('SCENE_UPDATE', elements, true);
+      }
+
       this.portal.updatePadId(this.props.padId);
       this.setState({
         collaborators: new Map(),

@@ -108,7 +108,26 @@ const Tabs: React.FC<TabsProps> = ({
         padName: ''
     });
 
-    const handlePadSelect = (pad: Tab) => {
+    const saveCurrentPad = async () => {
+        if (!selectedTabId || selectedTabId.startsWith('temp-')) return;
+        try {
+            await fetch(`/api/pad/${selectedTabId}/data`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    elements: excalidrawAPI.getSceneElementsIncludingDeleted(),
+                    files: excalidrawAPI.getFiles(),
+                }),
+            });
+        } catch (error) {
+            console.warn('[pad.ws] Failed to save pad before switching:', error);
+        }
+    };
+
+    const handlePadSelect = async (pad: Tab) => {
+        if (pad.id === selectedTabId) return;
+        // Checkpoint the current scene before the socket moves to another pad.
+        await saveCurrentPad();
         selectTab(pad.id);
     };
 
@@ -116,6 +135,7 @@ const Tabs: React.FC<TabsProps> = ({
         if (isCreatingPad) return;
 
         try {
+            await saveCurrentPad();
             const newPad = await createNewPadAsync();
 
             if (newPad) {

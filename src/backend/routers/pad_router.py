@@ -23,6 +23,10 @@ class SharingPolicyUpdate(BaseModel):
 class WhitelistUpdate(BaseModel):
     user_id: UUID
 
+class PadDataUpdate(BaseModel):
+    elements: list[Dict[str, Any]] | None = None
+    files: Dict[str, Any] | None = None
+
 @pad_router.post("/new")
 async def create_new_pad(
     user: UserSession = Depends(require_auth),
@@ -66,6 +70,29 @@ async def get_pad(
             status_code=500,
             detail=f"Failed to get pad: {str(e)}"
         )
+
+@pad_router.put("/{pad_id}/data")
+async def update_pad_data(
+    payload: PadDataUpdate,
+    pad_access: Tuple[Pad, UserSession] = Depends(require_pad_access),
+    session: AsyncSession = Depends(get_session)
+) -> Dict[str, Any]:
+    """Persist the current scene before a client switches pads or disconnects."""
+    pad, user = pad_access
+    try:
+        if payload.elements is not None:
+            pad.data["elements"] = payload.elements
+        if payload.files is not None:
+            pad.data["files"] = payload.files
+
+        await pad.save(session)
+        return {
+            "success": True,
+            "elements": len(pad.data.get("elements", [])),
+        }
+    except Exception as e:
+        print(f"Error saving pad {pad.id}: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail="Failed to save pad")
 
 @pad_router.put("/{pad_id}/rename")
 async def rename_pad(
