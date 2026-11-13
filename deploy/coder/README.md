@@ -50,6 +50,31 @@ If you changed the default organization name, get the organization UUID:
 2. Copy the UUID of the organization that will own the template.
 3. Store it in `.env` as `CODER_DEFAULT_ORGANIZATION`.
 
+## 4. Default Docker template
+
+The repository includes a ready-to-use Docker template in
+`deploy/coder/template/` (the official Coder Docker example). Create it with:
+
+```bash
+coder templates init --id docker /tmp/tpl-docker
+coder templates create docker -O <organization> -y -d /tmp/tpl-docker
+```
+
+Or use the committed copy:
+
+```bash
+coder templates create docker -O <organization> -y -d deploy/coder/template
+```
+
+Then set `CODER_TEMPLATE_ID` to the template UUID. Pad calls
+`ensure_workspace_exists` on every login, so a new user receives a workspace
+automatically once `CODER_TEMPLATE_ID`, `CODER_DEFAULT_ORGANIZATION` and
+`CODER_API_KEY` are configured.
+
+The Coder host must keep `/bin/*` and `/derp` public in Caddy: workspace agents
+download the agent binary from `/bin/coder-linux-amd64` and connect through the
+DERP WebSocket. The rest of the Coder UI remains Pad-gated.
+
 ## 4. Template
 
 Create or import a Coder template:

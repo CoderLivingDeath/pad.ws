@@ -93,7 +93,7 @@
 
 	# Coder static assets are public (like Pad assets); the UI and API remain
 	# gated. This avoids cross-site cookie failures for asset subresources.
-	@coder_public path /assets/* /static/* /favicon.ico
+	@coder_public path /assets/* /static/* /favicon.ico /bin/*
 	handle @coder_public {
 		request_header -X-Pad-*
 		reverse_proxy coder:7080 {
@@ -104,7 +104,7 @@
 	}
 
 	# Machine clients (coder CLI, workspace agents, IDE integrations) use Coder tokens.
-	@coder_api path /api/v2/*
+	@coder_api path /api/v2/* /derp /derp/*
 	handle @coder_api {
 		request_header -X-Pad-*
 		reverse_proxy coder:7080 {

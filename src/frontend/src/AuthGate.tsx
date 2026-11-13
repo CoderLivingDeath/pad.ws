@@ -31,21 +31,23 @@ export default function AuthGate() {
           
           const iframe = document.createElement("iframe");
           iframe.style.display = "none";
-          iframe.src = `${config.coderUrl}/api/v2/users/oidc/callback`;
+          iframe.src = `${config.coderUrl}/api/v2/users/oidc/callback?redirect=%2F`;
           console.debug(`[pad.ws] (Silently) Priming Coder OIDC session for ${config.coderUrl}`);
 
-          // Remove iframe as soon as it loads, or after fallback timeout
+          // Do not remove the iframe on the first onload: the Coder callback
+          // redirects through Keycloak, and removing it early aborts the OIDC
+          // flow. Keep it until the flow has had time to complete.
           const cleanup = () => {
             if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
             setCoderAuthDone(true);
           };
 
-          iframe.onload = cleanup;
           document.body.appendChild(iframe);
           iframeRef.current = iframe;
 
-          // Fallback: remove iframe after 5s if onload doesn't fire
-          timeoutRef.current = window.setTimeout(cleanup, 5000);
+          // The callback may redirect through Keycloak and back. 15s is enough
+          // for the SSO round trip without leaving a hidden frame around.
+          timeoutRef.current = window.setTimeout(cleanup, 15000);
         } catch (error) {
           console.error('[pad.ws] Error setting up Coder OIDC priming:', error);
           setCoderAuthDone(true);
