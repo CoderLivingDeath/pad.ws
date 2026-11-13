@@ -47,6 +47,14 @@ ADMIN_ALLOWLIST = os.getenv('ADMIN_ALLOWLIST')
 SESSION_COOKIE_NAME = os.getenv('SESSION_COOKIE_NAME', 'session_id')
 TRUSTED_PROXY_IPS = os.getenv('TRUSTED_PROXY_IPS', '*')
 
+# Comma-separated list of Keycloak realm roles required for Pad access.
+# When empty (the default), any authenticated Keycloak user receives a session.
+PAD_ALLOWED_ROLES = [
+    r.strip()
+    for r in os.getenv('PAD_ALLOWED_ROLES', '').split(',')
+    if r.strip()
+]
+
 default_pad = {}
 with open("templates/default.json", 'r') as f:
     default_pad = json.load(f)

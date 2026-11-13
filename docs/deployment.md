@@ -45,3 +45,13 @@
 | `API_WORKERS` | Pad | `1` | `1` |
 | `STATIC_DIR` | Pad | `/app/frontend/dist` | `/app/frontend/dist` |
 | `ASSETS_DIR` | Pad | `/app/frontend/dist/assets` | `/app/frontend/dist/assets` |
+
+## 2. Session and token lifetimes
+
+Pad's session layer uses three related lifetimes:
+
+- **Access token lifetime**: dictated by Keycloak (`expires_in` in the token response). Pad caches the token in Redis and refreshes it when it is within 30 seconds of expiry.
+- **Refresh token lifetime**: dictated by Keycloak (`refresh_expires_in`). It determines how long a Pad session can remain active without re-authentication. The Redis `session:{id}` key and the browser session cookie both use this value as their `Max-Age` / TTL.
+- **Cookie lifetime**: the `session_id` cookie is set with `Max-Age` equal to the refresh lifetime so that the browser can silently re-authenticate through the Keycloak SSO session while the cookie is valid.
+
+When the refresh lifetime ends, `/api/auth/verify` and `/api/auth/refresh` return `401` and the user must log in again. If the cookie expires while the Keycloak SSO session is still valid, the next navigation triggers a new OIDC login that re-authenticates silently and restores the Pad session.
