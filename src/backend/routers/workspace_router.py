@@ -50,8 +50,18 @@ async def get_workspace_state(
         raise HTTPException(status_code=503, detail="Coder workspace service is unavailable")
 
     if not workspace:
-        print(f"Coder workspace not found for user {user.email} ({user.id})")
-        raise HTTPException(status_code=404, detail=f"Coder Workspace not found for user {user.email} ({user.id})")
+        # The Coder user exists but has no workspace yet. Return a synthetic
+        # stopped state so the dashboard can render instead of showing a
+        # generic error; starting it will explain that no workspace exists.
+        print(f"Coder workspace not provisioned for user {user.id}")
+        return WorkspaceState(
+            state="stopped",
+            id="",
+            name="",
+            username=coder_username,
+            base_url=CODER_URL or "",
+            agent="main",
+        )
     
     latest_build: dict = workspace.get('latest_build', {})
     latest_build_status: str = latest_build.get('status', 'error')
@@ -78,6 +88,8 @@ async def start_workspace(
     """
     
     workspace: WorkspaceState = await get_workspace_state(user, coder_api)
+    if not workspace.id:
+        raise HTTPException(status_code=409, detail="No workspace is provisioned for this user")
 
     try:
         response = coder_api.start_workspace(workspace.id)
@@ -99,6 +111,8 @@ async def stop_workspace(
     """
     
     workspace: WorkspaceState = await get_workspace_state(user, coder_api)
+    if not workspace.id:
+        raise HTTPException(status_code=409, detail="No workspace is provisioned for this user")
 
     try:
         response = coder_api.stop_workspace(workspace.id)
