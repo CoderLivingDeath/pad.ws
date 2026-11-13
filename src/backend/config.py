@@ -34,6 +34,19 @@ OIDC_SERVER_URL = os.getenv('OIDC_SERVER_URL')
 OIDC_REALM = os.getenv('OIDC_REALM')
 OIDC_REDIRECT_URI = os.getenv('REDIRECT_URI')
 
+# Internal service URLs default to their public counterparts for development.
+OIDC_INTERNAL_URL = os.getenv('OIDC_INTERNAL_URL') or OIDC_SERVER_URL
+CODER_INTERNAL_URL = os.getenv('CODER_INTERNAL_URL') or os.getenv('CODER_URL')
+
+# ===== Edge / Deployment Configuration =====
+PAD_DOMAIN = os.getenv('PAD_DOMAIN')
+AUTH_DOMAIN = os.getenv('AUTH_DOMAIN')
+CODER_DOMAIN = os.getenv('CODER_DOMAIN')
+COOKIE_DOMAIN = os.getenv('COOKIE_DOMAIN')
+ADMIN_ALLOWLIST = os.getenv('ADMIN_ALLOWLIST')
+SESSION_COOKIE_NAME = os.getenv('SESSION_COOKIE_NAME', 'session_id')
+TRUSTED_PROXY_IPS = os.getenv('TRUSTED_PROXY_IPS', '*')
+
 default_pad = {}
 with open("templates/default.json", 'r') as f:
     default_pad = json.load(f)
@@ -52,7 +65,7 @@ def get_jwks_client():
     """Get or create a PyJWKClient for token verification"""
     global _jwks_client
     if _jwks_client is None:
-        jwks_url = f"{OIDC_SERVER_URL}/realms/{OIDC_REALM}/protocol/openid-connect/certs"
+        jwks_url = f"{OIDC_INTERNAL_URL}/realms/{OIDC_REALM}/protocol/openid-connect/certs"
         _jwks_client = PyJWKClient(jwks_url)
     return _jwks_client
 
