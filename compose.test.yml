@@ -1,0 +1,20 @@
+# Test override for docker-compose.prod.yml.
+# Builds Pad from the working tree, uses the local Caddyfile and imports the
+# Keycloak realm export. Keep production behavior unchanged.
+
+services:
+  pad:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pad-ws:test
+    container_name: pad
+
+  caddy:
+    volumes:
+      - ./deploy/Caddyfile.local:/etc/caddy/Caddyfile:ro
+
+  keycloak:
+    command: start --import-realm
+    volumes:
+      - ./deploy/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
