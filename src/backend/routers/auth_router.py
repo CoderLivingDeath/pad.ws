@@ -90,7 +90,8 @@ def validate_redirect(rd: Optional[str]) -> str:
         if rd.startswith("//"):
             return "/"
         # Reject backslashes and encoded separators that could be abused.
-        if "\\" in rd or "%5C" in rd.lower() or "%2F" in rd or "%2f" in rd:
+        rd_lower = rd.lower()
+        if "\\" in rd or "%5c" in rd_lower or "%2f" in rd_lower:
             return "/"
         # Reject control characters and null bytes.
         if any(ord(c) < 0x20 for c in rd):
