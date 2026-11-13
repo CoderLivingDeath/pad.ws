@@ -45,6 +45,9 @@ def test_replayed_logged_out_cookie_is_401(client: httpx.Client) -> None:
     if not result or not result.cookies.get(SESSION_COOKIE_NAME):
         pytest.skip("Login did not produce a session cookie")
 
+    session_cookie = result.cookies.get(SESSION_COOKIE_NAME)
+    assert session_cookie, "login did not produce a session cookie"
+
     # Log out through Caddy.
     logout_resp = client.get(
         stack_url("/api/auth/logout", PAD_BASE_URL),
@@ -57,7 +60,7 @@ def test_replayed_logged_out_cookie_is_401(client: httpx.Client) -> None:
     pad_hostname = urlparse(PAD_BASE_URL).hostname or ""
     replay.cookies.set(
         SESSION_COOKIE_NAME,
-        result.cookies[SESSION_COOKIE_NAME],
+        session_cookie,
         domain=pad_hostname,
     )
     resp = replay.get(

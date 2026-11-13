@@ -41,13 +41,12 @@ jobs:
           redis_password="$(openssl rand -hex 16)"
           keycloak_admin_password="$(openssl rand -hex 16)"
           coder_api_key="$(openssl rand -hex 32)"
-          coder_db_password="$(openssl rand -hex 16)"
-          sed \
+                sed \
             -e "s/^POSTGRES_PASSWORD=__CHANGE_ME__$/POSTGRES_PASSWORD=${postgres_password}/" \
             -e "s/^REDIS_PASSWORD=__CHANGE_ME__$/REDIS_PASSWORD=${redis_password}/" \
             -e "s/^KEYCLOAK_ADMIN_PASSWORD=__CHANGE_ME__$/KEYCLOAK_ADMIN_PASSWORD=${keycloak_admin_password}/" \
             -e "s/^CODER_API_KEY=__CHANGE_ME__$/CODER_API_KEY=${coder_api_key}/" \
-            -e "s/^CODER_DB_PASSWORD_URLENCODED=__CHANGE_ME__$/CODER_DB_PASSWORD_URLENCODED=${coder_db_password}/" \
+            -e "s/^CODER_DB_PASSWORD_URLENCODED=__CHANGE_ME__$/CODER_DB_PASSWORD_URLENCODED=${postgres_password}/" \
             -e "s/^DOCKER_GROUP_ID=__CHANGE_ME__$/DOCKER_GROUP_ID=999/" \
             -e "s/^CODER_DEFAULT_ORGANIZATION=__CHANGE_ME__$/CODER_DEFAULT_ORGANIZATION=00000000-0000-0000-0000-000000000000/" \
             -e "s/^CODER_TEMPLATE_ID=__CHANGE_ME__$/CODER_TEMPLATE_ID=00000000-0000-0000-0000-000000000000/" \
@@ -161,7 +160,7 @@ jobs:
       - name: Install Playwright
         run: |
           cd tests/e2e
-          npm install
+          npm ci
           npm exec playwright install --with-deps
 
       - name: Start test environment

@@ -7,3 +7,10 @@ src/excalidraw
 src/frontend/.env.local
 .vscode/settings.json
 dev/
+
+caddy-root.crt
+.env.test
+backups/
+.tmp-backup-check/
+tests/e2e/test-results/
+tests/e2e/playwright-report/

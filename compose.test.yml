@@ -18,3 +18,16 @@ services:
     command: start --import-realm
     volumes:
       - ./deploy/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+
+  coder:
+    environment:
+      # Local mode reaches the public issuer through Caddy on the host and
+      # trusts the Caddy internal CA mounted below.
+      CODER_OIDC_ISSUER_URL: https://auth.pad.test/realms/pad
+      SSL_CERT_FILE: /etc/ssl/certs/caddy-root.crt
+    extra_hosts:
+      - "auth.pad.test:host-gateway"
+      - "coder.pad.test:host-gateway"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./caddy-root.crt:/etc/ssl/certs/caddy-root.crt:ro

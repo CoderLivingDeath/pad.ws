@@ -34,6 +34,8 @@
 (pad_auth) {
 	forward_auth pad:8000 {
 		uri /api/auth/verify
+		header_up -Upgrade
+		header_up -Connection
 		header_up X-Original-Host {host}
 		header_up X-Original-URI {uri}
 		copy_headers X-Pad-User X-Pad-Roles X-Pad-Admin

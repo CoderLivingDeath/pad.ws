@@ -109,7 +109,7 @@ class Session:
             'client_id': self.oidc_config['client_id'],
             'response_type': 'code',
             'redirect_uri': self.oidc_config['redirect_uri'],
-            'scope': 'openid profile email'
+            'scope': 'openid'
         }
         return f"{auth_url}?{'&'.join(f'{k}={v}' for k,v in params.items())}"
 

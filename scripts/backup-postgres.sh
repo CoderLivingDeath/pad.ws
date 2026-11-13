@@ -15,18 +15,23 @@ BACKUP_DIR="${BACKUP_DIR:-./backups}"
 BACKUP_DATABASES="${BACKUP_DATABASES:-pad keycloak coder}"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+
+compose() {
+    docker compose -f "$COMPOSE_FILE" "$@"
+}
 
 mkdir -m 700 -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
 
 timestamp="$(date +%Y%m%d_%H%M%S)"
 
-if ! docker compose version >/dev/null 2>&1; then
+if ! compose version >/dev/null 2>&1; then
     echo "Error: docker compose is not available" >&2
     exit 1
 fi
 
-if ! docker compose ps --services --status running 2>/dev/null | grep -qx 'postgres'; then
+if ! compose ps --services --status running 2>/dev/null | grep -qx 'postgres'; then
     echo "Error: postgres service is not running" >&2
     exit 1
 fi
@@ -38,7 +43,7 @@ failed=()
 for db in "${databases[@]}"; do
     out="${BACKUP_DIR}/${db}_${timestamp}.sql.gz"
     echo "Backing up database: $db"
-    if docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$1"' _ "$db" | gzip > "$out"; then
+    if compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$1"' _ "$db" | gzip > "$out"; then
         chmod 600 "$out"
         size="$(du -h "$out" | cut -f1)"
         echo "Created: $out ($size)"

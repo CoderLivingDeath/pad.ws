@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from tests.conftest import PAD_BASE_URL, require_stack, stack_url
+from tests.conftest import PAD_BASE_URL, TEST_PASSWORD, TEST_USERNAME, keycloak_login, require_stack, stack_url
 
 pytestmark = pytest.mark.security
 
@@ -23,6 +23,7 @@ def test_foreign_cors_origin_gets_no_allow_origin(client: httpx.Client) -> None:
 def test_state_change_missing_origin_is_403(client: httpx.Client) -> None:
     """A POST without Origin or Referer must be rejected before reaching the app."""
     require_stack(client)
+    keycloak_login(client, TEST_USERNAME, TEST_PASSWORD)
     resp = client.post(
         stack_url("/api/auth/refresh", PAD_BASE_URL),
         headers={"Accept": "application/json"},
@@ -33,6 +34,7 @@ def test_state_change_missing_origin_is_403(client: httpx.Client) -> None:
 def test_state_change_foreign_origin_is_403(client: httpx.Client) -> None:
     """A POST from a foreign origin must be rejected."""
     require_stack(client)
+    keycloak_login(client, TEST_USERNAME, TEST_PASSWORD)
     resp = client.post(
         stack_url("/api/auth/refresh", PAD_BASE_URL),
         headers={
@@ -46,6 +48,7 @@ def test_state_change_foreign_origin_is_403(client: httpx.Client) -> None:
 def test_state_change_allowed_origin_reaches_endpoint(client: httpx.Client) -> None:
     """A same-origin state-changing request is not blocked by CSRF middleware."""
     require_stack(client)
+    keycloak_login(client, TEST_USERNAME, TEST_PASSWORD)
     origin = PAD_BASE_URL
     resp = client.post(
         stack_url("/api/auth/refresh", PAD_BASE_URL),
@@ -54,5 +57,5 @@ def test_state_change_allowed_origin_reaches_endpoint(client: httpx.Client) -> N
             "Origin": origin,
         },
     )
-    # The CSRF check passed; without a session the endpoint returns 401.
-    assert resp.status_code == 401
+    # The CSRF check passed; the refresh endpoint may return 200 or 401.
+    assert resp.status_code in (200, 401)

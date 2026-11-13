@@ -144,6 +144,17 @@ async def keycloak_code_flow(
     #    require public DNS inside the compose network.
     keycloak_internal_url = keycloak_url.replace(OIDC_SERVER_URL, OIDC_INTERNAL_URL)
     auth_resp = await http_client.get(keycloak_internal_url, follow_redirects=False)
+    for _ in range(5):
+        if auth_resp.status_code == 200:
+            break
+        if auth_resp.status_code not in (301, 302, 303, 307, 308):
+            break
+        location = auth_resp.headers.get("location", "")
+        if location.startswith("/"):
+            location = f"{OIDC_INTERNAL_URL}{location}"
+        else:
+            location = location.replace(OIDC_SERVER_URL, OIDC_INTERNAL_URL)
+        auth_resp = await http_client.get(location, follow_redirects=False)
     if auth_resp.status_code != 200:
         raise RuntimeError(
             f"Keycloak auth endpoint returned {auth_resp.status_code}: {auth_resp.text[:500]}"
@@ -173,14 +184,15 @@ async def keycloak_code_flow(
     # Resolve relative form action.
     if action.startswith("/"):
         action = f"{OIDC_INTERNAL_URL}{action}"
+    elif action.startswith(OIDC_SERVER_URL):
+        action = action.replace(OIDC_SERVER_URL, OIDC_INTERNAL_URL)
     elif not action.startswith("http"):
-        base = keycloak_url.rsplit("/", 1)[0]
-        action = f"{base}/{action}"
+        action = f"{OIDC_INTERNAL_URL}/realms/{OIDC_REALM}/{action.lstrip('/')}"
 
     # 4. Submit credentials.
     data = {**hidden, "username": username, "password": password}
     submit_resp = await http_client.post(action, data=data, follow_redirects=False)
-    if submit_resp.status_code != 302:
+    if submit_resp.status_code not in (302, 303, 307):
         raise RuntimeError(
             f"Keycloak login submission failed ({submit_resp.status_code}): {submit_resp.text[:500]}"
         )

@@ -34,8 +34,14 @@ def _location(resp: httpx.Response) -> str:
     return resp.headers.get("location", "")
 
 
-def _assert_security_headers(resp: httpx.Response, expect_hsts: bool = True) -> None:
-    """Common headers emitted by the (security_headers) Caddy snippet."""
+def _assert_security_headers(resp: httpx.Response, expect_hsts: bool | None = None) -> None:
+    """Common headers emitted by the (security_headers) Caddy snippet.
+
+    HSTS is intentionally omitted in the local *.pad.test profile; set
+    EXPECT_HSTS=true when running against a production-like profile.
+    """
+    if expect_hsts is None:
+        expect_hsts = os.getenv("EXPECT_HSTS", "false").lower() in ("1", "true", "yes")
     assert "X-Content-Type-Options" in resp.headers
     assert "Referrer-Policy" in resp.headers
     assert "Permissions-Policy" in resp.headers

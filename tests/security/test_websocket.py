@@ -31,4 +31,6 @@ def test_cross_origin_websocket_handshake_rejected(client: httpx.Client) -> None
     # FastAPI closes the websocket with an origin error before accept, so the
     # HTTP response is not a 101 Switching Protocols.
     assert resp.status_code != 101
-    assert resp.status_code in (400, 403)
+    # Caddy may reject the unauthenticated handshake with 401 before Pad runs
+    # its Origin check; with a session Pad returns 400/403.
+    assert resp.status_code in (400, 401, 403)

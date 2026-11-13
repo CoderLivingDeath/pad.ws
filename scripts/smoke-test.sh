@@ -76,7 +76,7 @@ fi
 
 # 1. Anonymous Pad landing page redirects to login.
 resp_headers="$TMPDIR/pad_root.headers"
-code=$(curl "${CURL_OPTS[@]}" -D "$resp_headers" -o /dev/null -w '%{http_code}' "$PAD_BASE_URL/")
+code=$(curl "${CURL_OPTS[@]}" -H 'Accept: text/html' -H 'Sec-Fetch-Mode: navigate' -D "$resp_headers" -o /dev/null -w '%{http_code}' "$PAD_BASE_URL/")
 location=$(grep -i '^Location:' "$resp_headers" 2>/dev/null | awk '{print $2}' | tr -d '\r' || true)
 if [[ "$code" == "302" && "$location" == */api/auth/login* ]]; then
     pass "anonymous Pad root redirects to login ($code $location)"

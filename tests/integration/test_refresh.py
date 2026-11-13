@@ -5,7 +5,7 @@ import secrets
 
 import pytest
 
-from conftest import BASE_URL, TEST_USERS, get_session_data, keycloak_code_flow, set_session_data
+from conftest import BASE_URL, FRONTEND_URL, TEST_USERS, get_session_data, keycloak_code_flow, set_session_data
 
 pytestmark = pytest.mark.integration
 
@@ -23,6 +23,7 @@ async def test_expired_refresh_returns_401(
     data = await get_session_data(redis_client, session_id)
     assert data is not None
     data["refresh_token"] = "expired-or-revoked-refresh-token"
+    data["access_token"] = "expired-access-token"
     await set_session_data(
         redis_client,
         session_id,
@@ -33,5 +34,6 @@ async def test_expired_refresh_returns_401(
     resp = await http_client.post(
         f"{BASE_URL}/api/auth/refresh",
         cookies={"session_id": session_id},
+        headers={"Origin": FRONTEND_URL},
     )
-    assert resp.status_code == 401
+    assert resp.status_code == 401, resp.text

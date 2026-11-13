@@ -153,7 +153,7 @@ async def login(
         auth_url = f"{auth_url}&kc_idp_hint={kc_idp_hint}"
     auth_url = f"{auth_url}&state={state}"
 
-    response = RedirectResponse(auth_url)
+    response = RedirectResponse(auth_url, status_code=302)
     # Cookie scoped to the auth router so it is not sent to other Pad paths.
     response.set_cookie(
         key="oidc_state",
@@ -269,7 +269,7 @@ async def callback(
     if mode == "popup":
         response = FileResponse(os.path.join(STATIC_DIR, "auth/popup-close.html"))
     else:
-        response = RedirectResponse(safe_rd)
+        response = RedirectResponse(safe_rd, status_code=302)
 
     _set_session_cookie(response, new_session_id, expiry)
     response.delete_cookie(key="oidc_state", path="/api/auth")

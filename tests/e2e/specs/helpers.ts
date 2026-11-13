@@ -87,9 +87,20 @@ export async function keycloakLogin(
  * Log out of Pad using the Excalidraw main menu.
  */
 export async function logoutFromPad(page: Page): Promise<void> {
-  const menuTrigger = page.locator('[aria-label="Menu"], .main-menu-trigger').first();
-  await menuTrigger.click();
-  const logoutItem = page.getByRole('menuitem', { name: /logout/i });
-  await logoutItem.click();
-  await page.waitForLoadState('networkidle');
+  await page.locator('.tabs-bar').waitFor({ state: 'visible', timeout: 15000 });
+  await page.waitForTimeout(500);
+  const menuTrigger = page.locator('[aria-label="Menu"], .main-menu-trigger, .dropdown-menu-button').first();
+  const logoutItem = page.locator('.dropdown-menu-item').filter({ hasText: 'Logout' }).last();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (await logoutItem.isVisible().catch(() => false)) break;
+    await menuTrigger.click({ force: true }).catch(() => undefined);
+    await page.waitForTimeout(300);
+  }
+  await logoutItem.waitFor({ state: 'visible', timeout: 5000 });
+  const authHostname = new URL(getBaseUrls().auth).hostname;
+  await logoutItem.dispatchEvent('click');
+  await page
+    .waitForURL((url) => url.hostname === authHostname, { timeout: 15000 })
+    .catch(() => undefined);
+  await page.waitForLoadState('networkidle').catch(() => undefined);
 }

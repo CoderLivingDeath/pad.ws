@@ -41,13 +41,12 @@ generate_env() {
     fi
 
     local postgres_password redis_password keycloak_admin_password
-    local coder_api_key coder_db_password docker_group_id
+    local coder_api_key docker_group_id
 
     postgres_password="$(openssl rand -hex 16)"
     redis_password="$(openssl rand -hex 16)"
     keycloak_admin_password="$(openssl rand -hex 16)"
     coder_api_key="$(openssl rand -hex 32)"
-    coder_db_password="$(openssl rand -hex 16)"
     docker_group_id="$(getent group docker 2>/dev/null | cut -d: -f3 || echo "999")"
 
     # Placeholder IDs for Coder; replace them after following
@@ -61,7 +60,7 @@ generate_env() {
         -e "s/^REDIS_PASSWORD=__CHANGE_ME__$/REDIS_PASSWORD=${redis_password}/" \
         -e "s/^KEYCLOAK_ADMIN_PASSWORD=__CHANGE_ME__$/KEYCLOAK_ADMIN_PASSWORD=${keycloak_admin_password}/" \
         -e "s/^CODER_API_KEY=__CHANGE_ME__$/CODER_API_KEY=${coder_api_key}/" \
-        -e "s/^CODER_DB_PASSWORD_URLENCODED=__CHANGE_ME__$/CODER_DB_PASSWORD_URLENCODED=${coder_db_password}/" \
+        -e "s/^CODER_DB_PASSWORD_URLENCODED=__CHANGE_ME__$/CODER_DB_PASSWORD_URLENCODED=${postgres_password}/" \
         -e "s/^DOCKER_GROUP_ID=__CHANGE_ME__$/DOCKER_GROUP_ID=${docker_group_id}/" \
         -e "s/^CODER_DEFAULT_ORGANIZATION=__CHANGE_ME__$/CODER_DEFAULT_ORGANIZATION=${coder_org}/" \
         -e "s/^CODER_TEMPLATE_ID=__CHANGE_ME__$/CODER_TEMPLATE_ID=${coder_template}/" \
@@ -84,18 +83,47 @@ link_env() {
     echo "Created ${REAL_ENV_FILE} from ${ENV_FILE}" >&2
 }
 
+wait_for_service() {
+    local service="$1"
+    local i container status
+    for i in $(seq 1 60); do
+        container="$(${COMPOSE} ps -q "${service}" 2>/dev/null || true)"
+        if [[ -n "${container}" ]]; then
+            status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${container}" 2>/dev/null || true)"
+            if [[ "${status}" == "healthy" ]]; then
+                echo "${service} is healthy." >&2
+                return 0
+            fi
+        fi
+        sleep 5
+    done
+    echo "ERROR: ${service} did not become healthy in time" >&2
+    ${COMPOSE} logs "${service}" --tail=80 >&2 || true
+    return 1
+}
+
 cmd_up() {
     generate_env
     link_env
 
-    echo "Starting test stack..." >&2
-    ${COMPOSE} up -d --build
+    # Start Caddy before Coder: Coder needs the public issuer through Caddy and
+    # the Caddy internal CA, which only exists after Caddy has started.
+    echo "Starting edge, database, Keycloak and Pad..." >&2
+    ${COMPOSE} up -d --build postgres redis keycloak pad caddy
+    wait_for_service caddy
 
-    echo "Waiting for services to become healthy (timeout 5 minutes)..." >&2
+    echo "Exporting Caddy internal CA..." >&2
+    ${COMPOSE} cp caddy:/data/caddy/pki/authorities/local/root.crt "${ROOT_DIR}/caddy-root.crt"
+    chmod 644 "${ROOT_DIR}/caddy-root.crt"
+
+    echo "Starting Coder with the Caddy CA..." >&2
+    ${COMPOSE} up -d coder
+
+    echo "Waiting for all services to become healthy (timeout 5 minutes)..." >&2
     local i
     for i in $(seq 1 60); do
         local pending
-        pending="$(${COMPOSE} ps | grep -E '(starting| unhealthy)' || true)"
+        pending="$(${COMPOSE} ps | grep -E '(starting| unhealthy| Restarting)' || true)"
         if [[ -z "${pending}" ]]; then
             echo "All services are healthy." >&2
             break

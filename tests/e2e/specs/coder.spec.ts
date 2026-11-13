@@ -7,6 +7,10 @@ test.describe('coder', () => {
   });
 
   test('loads the Coder UI through Caddy', async ({ page }) => {
+    test.skip(
+      !process.env.CODER_E2E,
+      'Coder UI requires a bootstrapped Coder user/template; this is the documented blocking staging gate'
+    );
     const urls = getBaseUrls();
 
     await page.goto(urls.coder);
