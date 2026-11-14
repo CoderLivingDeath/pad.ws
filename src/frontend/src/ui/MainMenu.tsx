@@ -266,7 +266,9 @@ export const MainMenuConfig: React.FC<MainMenuConfigProps> = ({
           onClick={handleLogout}
           disabled={isLoggingOut} // Disable button while logout is in progress
         >
-          {isLoggingOut ? "Logging out..." : "Logout"}
+          <span data-testid="logout-menu-item">
+            {isLoggingOut ? "Logging out..." : "Logout"}
+          </span>
         </MainMenu.Item>
       
     </MainMenu>

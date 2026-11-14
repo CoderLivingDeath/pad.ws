@@ -160,7 +160,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, []);
 
   return (
-    <div className="dashboard" ref={dashboardRef}>
+    <div className="dashboard" ref={dashboardRef} data-testid="workspace-dashboard">
       <div className={`dashboard__top-section ${!showBottomSection ? 'dashboard__top-section--full-height' : ''}`}>
         <StateIndicator />
         <ControlButton />
@@ -174,7 +174,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               excalidrawAPI={excalidrawAPI}
             />
           ) : (
-            <div className="dashboard__welcome-message">
+            <div className="dashboard__welcome-message" data-testid="workspace-state-message">
               <h1 className="dashboard__welcome-message__title">
                 {getWelcomeMessage()}
               </h1>

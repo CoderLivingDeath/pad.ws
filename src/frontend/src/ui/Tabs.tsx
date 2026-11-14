@@ -326,7 +326,7 @@ const Tabs: React.FC<TabsProps> = ({
                                     className="tabs-wrapper"
                                     ref={tabsWrapperRef}
                                 >
-                                    <div className="new-tab-button-container">
+                                    <div className="new-tab-button-container" data-testid="new-pad-button">
                                         <Tooltip label={isCreatingPad ? "Creating new pad..." : "New pad"} children={
                                             <Button
                                                 onSelect={isCreatingPad ? () => { } : handleCreateNewPad}
@@ -350,6 +350,8 @@ const Tabs: React.FC<TabsProps> = ({
                                         {!isLoading && tabs && tabs.slice(startPadIndex, startPadIndex + PADS_PER_PAGE).map((tab: Tab, index: any) => (
                                             <div
                                                 key={tab.id}
+                                                data-pad-id={tab.id}
+                                                data-testid="pad-tab"
                                                 onContextMenu={(e: { preventDefault: () => void; clientX: any; clientY: any; }) => {
                                                     e.preventDefault();
                                                     setContextMenu({
@@ -376,9 +378,10 @@ const Tabs: React.FC<TabsProps> = ({
                                                                 className={`tab-sharing-${tab.sharingPolicy} ${selectedTabId === tab.id ? "active-pad" : ""}`}
                                                                 children={
                                                                     <div className="tab-content">
-                                                                        <span 
+                                                                        <span
                                                                             ref={el => { titleRefs.current[tab.id] = el; }}
                                                                             className={`tab-title ${overflowMap[tab.id] ? 'tab-title-overflow' : ''}`}
+                                                                            data-testid="tab-title"
                                                                         >
                                                                             {selectedTabId === tab.id && displayPadLoadingIndicator ? "..." : tab.title}
                                                                         </span>
@@ -398,9 +401,10 @@ const Tabs: React.FC<TabsProps> = ({
                                                         className={`tab-sharing-${tab.sharingPolicy} ${selectedTabId === tab.id ? "active-pad" : ""}`}
                                                         children={
                                                             <div className="tab-content">
-                                                                <span 
+                                                                <span
                                                                     ref={el => { titleRefs.current[tab.id] = el; }}
                                                                     className={`tab-title ${overflowMap[tab.id] ? 'tab-title-overflow' : ''}`}
+                                                                    data-testid="tab-title"
                                                                 >
                                                                     {tab.title}
                                                                 </span>

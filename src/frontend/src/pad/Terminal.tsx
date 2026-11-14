@@ -197,10 +197,11 @@ export const Terminal: React.FC<TerminalProps> = ({
     <div className="terminal-container">
       {shouldRenderIframe ? (
         <div className="terminal-iframe-wrapper">
-          <iframe 
+          <iframe
             className={`terminal-iframe ${iframeLoaded ? 'terminal-iframe--loaded' : 'terminal-iframe--loading-fade'}`}
-            src={terminalUrl} 
+            src={terminalUrl}
             title="Terminal"
+            data-testid="terminal-iframe"
             onLoad={handleIframeLoad}
           />
           <div className={`terminal-loading-animation terminal-loading-animation--fade ${iframeLoaded ? 'terminal-loading-animation--hidden' : ''}`}>
