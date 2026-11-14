@@ -4,7 +4,7 @@
 
 services:
   caddy:
-    image: caddy:2-alpine
+    image: ${CADDY_IMAGE}
     container_name: caddy
     restart: unless-stopped
     env_file:
@@ -22,7 +22,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     networks:
-      - pad
+      edge:
+        ipv4_address: 172.28.0.2
     mem_limit: 256m
     cpus: "0.5"
     pids_limit: 100
@@ -46,7 +47,7 @@ services:
         condition: service_healthy
 
   pad:
-    image: ghcr.io/pad-ws/pad.ws:main
+    image: ${PAD_IMAGE}
     container_name: pad
     restart: unless-stopped
     env_file:
@@ -79,6 +80,7 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       CODER_API_KEY: ${CODER_API_KEY}
+      CODER_API_KEY_CREATED_AT: ${CODER_API_KEY_CREATED_AT:-}
       CODER_URL: https://${CODER_DOMAIN}
       CODER_INTERNAL_URL: ${CODER_INTERNAL_URL:-http://coder:7080}
       CODER_TEMPLATE_ID: ${CODER_TEMPLATE_ID}
@@ -86,7 +88,7 @@ services:
       CODER_WORKSPACE_NAME: ${CODER_WORKSPACE_NAME:-ubuntu}
       API_WORKERS: ${API_WORKERS:-1}
     networks:
-      - pad
+      - edge
     mem_limit: 512m
     cpus: "1.0"
     pids_limit: 200
@@ -110,7 +112,7 @@ services:
         condition: service_healthy
 
   postgres:
-    image: postgres:16
+    image: ${POSTGRES_IMAGE}
     container_name: postgres
     restart: unless-stopped
     env_file:
@@ -126,7 +128,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
     networks:
-      - pad
+      - edge
     mem_limit: 1g
     cpus: "1.0"
     pids_limit: 200
@@ -145,7 +147,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:alpine
+    image: ${REDIS_IMAGE}
     container_name: redis
     restart: unless-stopped
     env_file:
@@ -156,7 +158,7 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - pad
+      - edge
     mem_limit: 256m
     cpus: "0.5"
     pids_limit: 100
@@ -175,7 +177,7 @@ services:
       retries: 5
 
   keycloak:
-    image: quay.io/keycloak/keycloak:25.0
+    image: ${KEYCLOAK_IMAGE}
     container_name: keycloak
     restart: unless-stopped
     command: start
@@ -198,7 +200,7 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_HEALTH_ENABLED: "true"
     networks:
-      - pad
+      - edge
     mem_limit: 1g
     cpus: "1.0"
     pids_limit: 200
@@ -220,7 +222,7 @@ services:
         condition: service_healthy
 
   coder:
-    image: ghcr.io/coder/coder:latest
+    image: ${CODER_IMAGE}
     container_name: coder
     restart: unless-stopped
     env_file:
@@ -232,7 +234,7 @@ services:
       CODER_HTTP_ADDRESS: 0.0.0.0:7080
       CODER_OIDC_ISSUER_URL: https://${AUTH_DOMAIN}/realms/${OIDC_REALM}
       CODER_OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
-      CODER_OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      CODER_OIDC_CLIENT_SECRET: ${CODER_OIDC_CLIENT_SECRET:-${OIDC_CLIENT_SECRET}}
       CODER_OIDC_IGNORE_EMAIL_VERIFIED: "false"
       CODER_OIDC_SCOPES: openid
       CODER_ADDITIONAL_CSP_POLICY: frame-ancestors https://${PAD_DOMAIN}
@@ -243,7 +245,7 @@ services:
     group_add:
       - ${DOCKER_GROUP_ID}
     networks:
-      - pad
+      - edge
     mem_limit: 1g
     cpus: "1.0"
     pids_limit: 200
@@ -265,8 +267,12 @@ services:
         condition: service_healthy
 
 networks:
-  pad:
+  edge:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
 
 volumes:
   postgres_data:

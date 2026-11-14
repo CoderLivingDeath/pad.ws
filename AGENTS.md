@@ -22,12 +22,14 @@ Single unit test: append `tests/unit/test_redirect_validation.py -q` (or `-k`). 
 Local acceptance stack (`*.pad.test`, internal CA):
 
 ```bash
+bash scripts/deploy.sh up --profile local
+# or the legacy helper:
 bash scripts/test-env.sh up
-bash scripts/test-env.sh status
-bash scripts/test-env.sh down
 ```
 
-It builds Pad from the worktree and uses ports **80/443**. If a public/test stack is already running on those ports, stop it first. It creates `.env.test` and `caddy-root.crt`; both are gitignored.
+The deploy script is the one-command entry point for local, staging and production profiles. It resolves configuration, generates secrets, runs a compose-wide preflight, starts the stack and runs smoke checks. The legacy `scripts/test-env.sh` helper still works for local acceptance.
+
+Both build Pad from the worktree and use ports **80/443**. If a public/test stack is already running on those ports, stop it first. The local profile creates `.env` and `caddy-root.crt`; both are gitignored.
 
 Integration tests (must run inside the Caddy network; script handles it):
 
@@ -43,6 +45,24 @@ cd tests/e2e && npm ci && npx playwright install --with-deps chromium && npx pla
 ```
 
 `make test-unit|test-integration|test-proxy|test-e2e|test-security|test-deploy|test-all` are wrappers, but they assume local `pytest`, Node/Playwright and a running test stack. `make test-env` only brings the stack up.
+
+Operator deployment commands:
+
+```bash
+make deploy PROFILE=local
+make deploy PROFILE=production DOMAIN=example.com ALLOWLIST="203.0.113.0/24"
+make status
+make logs
+make backup
+make restore
+make rollback
+```
+
+Validate a resolved configuration without starting containers:
+
+```bash
+bash scripts/deploy.sh up --profile production --domain example.com --allowlist "203.0.113.0/24" --dry-run
+```
 
 OpenSpec:
 
@@ -82,9 +102,8 @@ Do not hand-edit `openspec/specs/**`; archive promotes delta specs. Use `openspe
 
 ## Current gotchas
 
-- One-command `scripts/deploy.sh` and profiles are **planned** in `production-readiness-and-delivery`; they do not exist yet. Use `scripts/test-env.sh` today.
+- `scripts/deploy.sh` and `deploy/profiles/` are now implemented. Use them for new deployments; `scripts/test-env.sh` remains available for local acceptance.
 - `docs/testing.md` still has a TBD traceability matrix; `docs/use-cases.md` defines UC-01…UC-10 but the UC tests are not implemented yet.
 - `risk-register.md` in the new change records accepted risks (offsite backup, CD, rate limiting).
 - If Pad returns `401` after long Coder use, check Keycloak session TTLs; the test realm is configured for 8h idle / 7d max.
-- `docker-compose.prod.yml` currently relies on Caddy/Keycloak/Pad env files; always validate with:
-  `docker compose -f docker-compose.prod.yml -f compose.test.yml --env-file .env.test config`.
+- `docker-compose.prod.yml` relies on `*_IMAGE` variables and an `edge` network subnet; always validate generated `.env` files with `docker compose -f docker-compose.prod.yml -f compose.test.yml --env-file .env config` or use `scripts/deploy.sh up ... --dry-run`.
