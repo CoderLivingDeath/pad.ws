@@ -34,14 +34,14 @@ Frontend unit and component tests SHALL measure coverage with Vitest coverage. T
 - **WHEN** coverage is reported for auth, session or collaboration modules
 - **THEN** each critical module meets its higher threshold or the check fails
 
-### Requirement: Use Case E2E coverage
+### Requirement: Use Case acceptance coverage
 
-Every P0 Use Case in the Use Case catalog SHALL have at least one automated Playwright test. A P0 Use Case without a mapped test SHALL fail verification; a P0 test SHALL NOT be silently skipped.
+Every P0 Use Case SHALL have at least one automated acceptance test: Playwright for user journeys and the deployment harness for operator journeys. A P0 Use Case without a mapped test SHALL fail verification; a P0 test SHALL NOT be silently skipped.
 
-#### Scenario: P0 Use Case has an E2E test
+#### Scenario: P0 Use Case has an automated test
 
 - **WHEN** the traceability check runs
-- **THEN** every P0 Use Case names a Playwright test path and a status
+- **THEN** every P0 Use Case names a Playwright or deployment-harness path and a status
 
 #### Scenario: Missing or skipped P0 test fails
 

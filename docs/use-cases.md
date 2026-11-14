@@ -15,7 +15,7 @@ This document is the source of truth for the primary user and operator journeys.
 | UC-05 | User | Open code-server through Coder | `tests/e2e/specs/uc-05-code-server.spec.ts` | CI blocking |
 | UC-06 | User | Logout, replay rejection and user switch | `tests/e2e/specs/uc-06-logout-revocation.spec.ts` | CI blocking |
 | UC-07 | Admin | Keycloak admin access with role and allowlist | `tests/e2e/specs/uc-07-admin.spec.ts` | CI blocking |
-| UC-08 | Operator | One-command deployment | `tests/e2e/specs/uc-08-deploy.spec.ts` + `scripts/deploy.sh` | CI + staging |
+| UC-08 | Operator | One-command deployment | `tests/deploy/uc-08-deploy.sh` + `scripts/deploy.sh` | CI + staging |
 | UC-09 | Operator | Upgrade and rollback | `tests/deploy/uc-09-upgrade-rollback.sh` | Staging blocking |
 | UC-10 | Operator | Backup and restore | `tests/deploy/uc-10-backup-restore.sh` | Staging blocking |
 
@@ -129,7 +129,7 @@ This document is the source of truth for the primary user and operator journeys.
 | UC-05 | yes | edge-authentication | `uc-05-code-server.spec.ts` | to implement |
 | UC-06 | yes | edge-authentication, application-security | `uc-06-logout-revocation.spec.ts` | to implement |
 | UC-07 | yes | edge-authentication | `uc-07-admin.spec.ts` | to implement |
-| UC-08 | yes | deployment-automation | `uc-08-deploy.spec.ts`, deploy checks | to implement |
+| UC-08 | yes | deployment-automation | `tests/deploy/uc-08-deploy.sh`, deploy checks | to implement |
 | UC-09 | yes | deployment-automation, ci-cd | `uc-09-upgrade-rollback.sh` | to implement |
 | UC-10 | yes | production-deployment | `uc-10-backup-restore.sh` | to implement |
 

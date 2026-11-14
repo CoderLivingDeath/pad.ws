@@ -148,7 +148,7 @@ An operator SHALL back up all service databases and SHALL restore them into a fr
 
 ### Requirement: Use Case traceability
 
-Each P0 Use Case SHALL name its automated E2E test or a documented blocking staging gate in `docs/use-cases.md`. Missing or silently skipped P0 coverage SHALL fail verification.
+Each P0 Use Case SHALL name an automated acceptance test or a documented blocking staging gate in `docs/use-cases.md`. User journeys use Playwright; operator journeys use the deployment harness. Missing or silently skipped P0 coverage SHALL fail verification.
 
 #### Scenario: Matrix is complete
 

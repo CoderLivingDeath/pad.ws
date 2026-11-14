@@ -16,6 +16,7 @@
 - [ ] 1.10 Add a log-hygiene test that performs login, callback and logout and inspects Caddy/Pad/Keycloak/Coder logs for cookies, authorization headers, codes, state and Coder keys. Verify no secret is present.
 - [ ] 1.11 Fix `scripts/smoke-test.sh` HTML-entity decoding (`&amp;`), the `coder.py` shadowed variable and the flaky E2E return-path selector. Verify smoke and E2E pass repeatedly.
 - [ ] 1.12 Reduce WebSocket revalidation to at most 30 seconds and close the socket immediately when the session is revoked. Verify logout closes an open socket.
+- [ ] 1.13 Enable Keycloak brute-force protection in the realm export/bootstrap and verify failed login attempts trigger lockout. Record the limits in the risk register.
 
 ## 2. One-command deployment
 
@@ -43,7 +44,7 @@
 ## 4. Use Cases and E2E
 
 - [ ] 4.1 Write `docs/use-cases.md` with UC-01…UC-10: actor, preconditions, main flow, alternate/error flow, expected result, linked requirements, test path and gate. Verify every P0 UC is present.
-- [ ] 4.2 Add Playwright specs `tests/e2e/specs/uc-01-*.spec.ts` … `uc-10-*.spec.ts`; no P0 test may be silently skipped. Verify `--list` shows every UC.
+- [ ] 4.2 Add Playwright specs for user UCs (`uc-01`…`uc-07`) and deployment-harness tests for operator UCs (`tests/deploy/uc-08`…`uc-10`); no P0 test may be silently skipped. Verify the traceability check sees every UC.
 - [ ] 4.3 Cover negative/alternate flows for UC-01 (replayed state), UC-06 (replay/user switch), UC-07 (non-admin/out-of-allowlist), UC-08 (failed deploy), UC-09 (failed upgrade rollback).
 - [ ] 4.4 Bind UC test results to `docs/testing.md` and `docs/use-cases.md`; verify the traceability checker sees the mapping.
 - [ ] 4.5 Add stable `data-testid`/role selectors where needed; remove text-only assertions that cause flakiness. Verify the full E2E suite passes three consecutive runs.

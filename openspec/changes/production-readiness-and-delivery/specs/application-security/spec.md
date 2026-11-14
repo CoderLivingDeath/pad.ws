@@ -60,7 +60,7 @@ Caddy, Pad, Keycloak and Coder logs used by this deployment SHALL NOT record ses
 
 ### Requirement: Rate limiting posture
 
-The deployment SHALL document that edge rate limiting is not provided by the standard Caddy build, record the residual risk and planned controls, and SHALL NOT present the public test stand as rate-limited. Keycloak brute-force detection SHALL remain enabled.
+The deployment SHALL document that edge rate limiting is not provided by the standard Caddy build, record the residual risk and planned controls, and SHALL NOT present the public test stand as rate-limited. Keycloak brute-force detection SHALL be enabled and verified.
 
 #### Scenario: Residual risk is recorded
 
