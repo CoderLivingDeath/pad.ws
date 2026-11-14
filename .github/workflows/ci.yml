@@ -10,6 +10,10 @@ on:
       - 'compose.test.yml'
       - 'scripts/**'
       - 'tests/**'
+      - 'src/frontend/**'
+      - 'docs/use-cases.md'
+      - 'docs/testing.md'
+      - 'openspec/specs/**'
       - 'Makefile'
       - '.github/workflows/**'
   pull_request:
@@ -21,6 +25,10 @@ on:
       - 'compose.test.yml'
       - 'scripts/**'
       - 'tests/**'
+      - 'src/frontend/**'
+      - 'docs/use-cases.md'
+      - 'docs/testing.md'
+      - 'openspec/specs/**'
       - 'Makefile'
       - '.github/workflows/**'
 
@@ -175,3 +183,73 @@ jobs:
       - name: Stop test environment
         if: always()
         run: bash scripts/test-env.sh down
+
+  quality:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+
+      - name: Set up Python
+        uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+
+      - name: Install backend test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r src/backend/requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Install frontend dependencies
+        run: cd src/frontend && npm ci
+
+      - name: Run coverage gates
+        run: bash scripts/run-coverage.sh
+
+      - name: Write coverage summary
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          summary = pathlib.Path('coverage/frontend/coverage-summary.json')
+          print('## Coverage')
+          print('')
+          if summary.exists():
+              total = json.loads(summary.read_text())['total']
+              print('| Layer | Statements | Branches | Functions | Lines |')
+              print('| --- | --- | --- | --- | --- |')
+              print(
+                  '| frontend | {statements[pct]:.2f}% | {branches[pct]:.2f}% | '
+                  '{functions[pct]:.2f}% | {lines[pct]:.2f}% |'.format(**total)
+              )
+          backend = pathlib.Path('coverage/backend/coverage.xml')
+          print('')
+          print(f'Backend report: `{"present" if backend.exists() else "missing"}`')
+          print('Full reports are attached as the `coverage-reports` artifact.')
+          PY
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: coverage-reports
+          path: |
+            coverage/backend
+            coverage/frontend
+            coverage/baseline.json
+          retention-days: 14
+
+  traceability:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+
+      - name: Check Use Case traceability
+        run: python3 scripts/check-traceability.py
