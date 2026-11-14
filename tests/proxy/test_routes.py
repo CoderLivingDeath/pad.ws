@@ -111,6 +111,27 @@ def test_coder_ui_anonymous_redirects_to_pad_login(client: httpx.Client) -> None
     assert PAD_BASE_URL in loc and "/api/auth/login" in loc
 
 
+def test_pad_logout_helper_clears_all_coder_cookies(client: httpx.Client) -> None:
+    """/__pad/logout must clear every documented Coder cookie."""
+    require_stack(client)
+    resp = client.get(stack_url("/__pad/logout", CODER_BASE_URL))
+    assert resp.status_code == 204
+    set_cookie_names = {
+        cookie.split("=", 1)[0] for cookie in resp.headers.get_list("set-cookie")
+    }
+    expected = {
+        "coder_session_token",
+        "coder_oauth_state",
+        "oauth_state",
+        "oauth_redirect",
+        "oauth_pkce_verifier",
+        "csrf_token",
+    }
+    assert expected.issubset(set_cookie_names), (
+        f"Missing cookie clears: {expected - set_cookie_names}"
+    )
+
+
 def test_coder_api_without_pad_cookie_is_not_redirected(client: httpx.Client) -> None:
     """
     Machine-client paths (/api/v2/*) bypass Pad forward_auth.  A request with
