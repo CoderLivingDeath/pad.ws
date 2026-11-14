@@ -96,7 +96,7 @@ E2E coverage of browser JavaScript is optional follow-up (`monocart-coverage-rep
 
 The P0 set is UC-01…UC-10 from `use-cases` spec. `scripts/check-traceability.py` parses the spec and the document and fails when a P0 UC has no test path or is marked skipped without an approved gate.
 
-### D6. CI/CD pipeline
+### D6. CI quality gates (CD deferred)
 
 `ci.yml` (pull requests and `main`):
 
@@ -104,17 +104,12 @@ The P0 set is UC-01…UC-10 from `use-cases` spec. `scripts/check-traceability.p
 - `unit`: pytest with coverage.
 - `stack`: compose test profile; integration, proxy, security, deploy invariants; backend coverage.
 - `e2e`: Playwright UC suites against the stack; frontend coverage if applicable.
-- `image`: build on PR, build/push digest on `main` and tags.
+- `image`: build on PR, build/publish digest on release tags.
 - `quality`: merge coverage, traceability, publish summary.
 
-`cd.yml` (staging on `main`, production on tag/manual):
+This change deliberately stops at CI. Automated staging/production deployment and rollback need protected environments, SSH or a self-hosted runner, deploy secrets, backups and a release process; they are a separate change. Until then, deployment and rollback are the explicit operator commands from D1. This matches the current “tests and lints first” scope.
 
-- Download/produce the recorded digest set.
-- Staging: protected environment, deploy via `scripts/deploy.sh upgrade`, smoke, record.
-- Production: environment approval, pre-deploy backup, deploy pinned digests, migrations, smoke, record.
-- Failure: automatic rollback to the previous digest set and backup, then smoke.
-
-All actions are pinned to commit SHAs; all images are pinned by digest in release manifests.
+All actions are pinned to commit SHAs; release images are pinned by digest in the release manifest.
 
 ### D7. Production hardening decisions
 
@@ -125,7 +120,7 @@ All actions are pinned to commit SHAs; all images are pinned by digest in releas
 - **Coder key rotation**: `scripts/rotate-coder-key.sh` creates a new token, updates `.env`, restarts Pad and verifies `/api/workspace/state`. `CODER_API_KEY_CREATED_AT` drives a status warning at six days.
 - **Restore**: `scripts/restore-postgres.sh` restores all three databases into a fresh volume; a staging drill is part of acceptance.
 - **Monitoring baseline**: `scripts/status.sh` checks container health, certificate expiry, last backup age and Coder key age; optional webhook alert.
-- **Backup**: retention via `BACKUP_RETENTION_DAYS`, integrity check with `pg_restore --list`, optional `BACKUP_REMOTE` via rclone/S3-compatible storage.
+- **Backup**: retention via `BACKUP_RETENTION_DAYS` and integrity check with `pg_restore --list`. Offsite copy and encryption are out of scope for this change; they are a documented follow-up (see D9).
 
 ### D8. Testability and verification
 
@@ -134,6 +129,27 @@ All actions are pinned to commit SHAs; all images are pinned by digest in releas
 - The E2E suite is run through Caddy, not direct services.
 - The traceability check is a required CI step and a local `make check-traceability` target.
 - A staging deploy is the only place where ACME, Debian install, external port scan and real Coder template are exercised; results go into `docs/testing.md`.
+
+### D9. Backup and rate-limiting follow-ups
+
+See `risk-register.md` for the accepted risks, severity, owner and spec links.
+
+**Offsite backup:** the operator chose “nowhere for now”. This change keeps a local timestamped backup with retention and an integrity check. The follow-up options are:
+
+- S3-compatible storage (AWS S3, MinIO, Cloudflare R2, Backblaze B2) via restic/rclone, encrypted and lifecycle-managed;
+- an rclone remote (SFTP/WebDAV/Drive);
+- an operator-provided path on another host.
+
+They differ in credential model, cost, restore time and encryption. None is implemented now.
+
+**Rate limiting:** the standard `caddy:2-alpine` build has no `rate_limit` directive. Options:
+
+- custom Caddy build with `xcaddy` and a rate-limit plugin, pinned by digest; per-site/per-IP limits and `429`;
+- application-level limits in Pad (Redis counters for login/callback/API), plus Keycloak brute-force detection;
+- OS-level `nftables`/`iptables` `hashlimit` for coarse protection;
+- an external WAF/CDN, which conflicts with the self-hosted single-VPS goal.
+
+Decision: no custom Caddy build in this change. Short-term protection is Keycloak brute-force detection plus documented application-level limits as a follow-up; a custom Caddy build or WAF is a later decision. Rate limiting remains a residual risk, not a hidden requirement.
 
 ## Risks / Trade-offs
 
@@ -156,8 +172,8 @@ All actions are pinned to commit SHAs; all images are pinned by digest in releas
 7. Promote the public test stand to the new deploy command; verify and record.
 8. Remove the old manual steps from `docs/deployment.md` once the script is verified.
 
-## Open Questions
+## Resolved Decisions
 
-- Which remote backup target is available (S3-compatible, rclone remote, or operator-provided path)?
-- Whether the deployment target is reached over SSH from GitHub Actions or by a self-hosted runner.
-- Whether the team wants a custom Caddy build for rate limiting in this change or a follow-up.
+- **Offsite backup:** not now. Local retention and integrity only; offsite/encryption is a follow-up.
+- **CD:** not now. CI runs tests, lints, coverage and traceability; deployment/rollback remain one-command operator actions.
+- **Rate limiting:** no custom Caddy build in this change; Keycloak brute-force protection plus documented app-level limits as follow-up.

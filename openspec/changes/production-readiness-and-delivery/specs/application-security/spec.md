@@ -57,3 +57,17 @@ Caddy, Pad, Keycloak and Coder logs used by this deployment SHALL NOT record ses
 
 - **WHEN** the Caddy log configuration is changed
 - **THEN** the redaction test fails if a protected value becomes visible
+
+### Requirement: Rate limiting posture
+
+The deployment SHALL document that edge rate limiting is not provided by the standard Caddy build, record the residual risk and planned controls, and SHALL NOT present the public test stand as rate-limited. Keycloak brute-force detection SHALL remain enabled.
+
+#### Scenario: Residual risk is recorded
+
+- **WHEN** the security posture is reviewed
+- **THEN** the risk register contains a rate-limiting entry linked to this requirement and no claim of edge rate limiting is made
+
+#### Scenario: Login brute force is bounded
+
+- **WHEN** an attacker repeatedly attempts Keycloak login
+- **THEN** Keycloak brute-force detection applies and the planned application-level limits are tracked as follow-up

@@ -10,7 +10,7 @@
 - [ ] 1.4 Clear every documented Coder cookie in the `/__pad/logout` Caddy route (`coder_session_token`, `coder_oauth_state`, `oauth_state`, `oauth_redirect`, `oauth_pkce_verifier`, `csrf_token`). Verify a second user on the same browser does not inherit the first Coder session.
 - [ ] 1.5 Pin Caddy, Pad, PostgreSQL, Redis, Keycloak and Coder images by digest through `${*_IMAGE}` variables and write `deploy/releases/<version>.json`. Verify rollback can start every service from the recorded digest set.
 - [ ] 1.6 Add `scripts/restore-postgres.sh` for all three databases with an integrity check (`pg_restore --list`) and a staging drill into a fresh volume. Verify users, pads, realm and Coder state are restored.
-- [ ] 1.7 Add backup retention, integrity verification, encryption and optional offsite copy (`BACKUP_RETENTION_DAYS`, `BACKUP_REMOTE`). Verify old dumps are pruned, a corrupt dump fails the check and an offsite copy exists.
+- [ ] 1.7 Add backup retention and integrity verification (`BACKUP_RETENTION_DAYS`, `pg_restore --list`). Verify old dumps are pruned and a corrupt dump fails the check. Offsite copy and encryption are follow-up risks R-01/R-02, not part of this change.
 - [ ] 1.8 Move Caddy to a dedicated `edge` network with a static address and set `TRUSTED_PROXY_IPS` to that address. Verify a direct request with a forged `X-Forwarded-Proto` is not treated as HTTPS.
 - [ ] 1.9 Add a FastAPI route-inventory test that classifies every route as public or protected. Verify a new sensitive route without `require_auth` fails the test.
 - [ ] 1.10 Add a log-hygiene test that performs login, callback and logout and inspects Caddy/Pad/Keycloak/Coder logs for cookies, authorization headers, codes, state and Coder keys. Verify no secret is present.
@@ -48,16 +48,16 @@
 - [ ] 4.4 Bind UC test results to `docs/testing.md` and `docs/use-cases.md`; verify the traceability checker sees the mapping.
 - [ ] 4.5 Add stable `data-testid`/role selectors where needed; remove text-only assertions that cause flakiness. Verify the full E2E suite passes three consecutive runs.
 
-## 5. CI/CD
+## 5. CI quality gates (CD deferred)
 
 - [ ] 5.1 Refactor `.github/workflows/ci.yml` into `config`, `unit`, `stack`, `e2e`, `quality` and `image` jobs with path filters, concurrency and caching. Verify a Caddy/compose change runs config/proxy/deploy checks.
 - [ ] 5.2 Make coverage and traceability required checks; verify a PR with missing coverage or a P0 UC fails.
-- [ ] 5.3 Build the Pad image on PR without pushing; publish digest-pinned images on `main` and tags and write the release manifest. Verify the digest is recorded.
-- [ ] 5.4 Add `.github/workflows/cd.yml` staging deployment on `main` with a protected environment, post-deploy smoke and release record.
-- [ ] 5.5 Add production deployment on tag/manual dispatch with required approval, pre-deploy backup, pinned digests and smoke. Verify an unapproved run does not deploy.
-- [ ] 5.6 Add automated rollback on failed staging/production smoke using the previous digest set and backup. Verify the rollback workflow restores and verifies service.
-- [ ] 5.7 Configure branch protection required checks and environment secrets with least privilege. Verify a failing required check blocks merge and secrets are masked.
-- [ ] 5.8 Publish CI/CD summaries and artifacts: test reports, coverage, digests, deployment URL, smoke result. Verify retention and links.
+- [ ] 5.3 Build the Pad image on PR without pushing; publish digest-pinned images on release tags and write the release manifest. Verify the digest is recorded.
+- [ ] 5.4 Configure branch protection required checks. Verify a failing lint, unit, coverage or traceability check blocks merge.
+- [ ] 5.5 Configure least-privilege CI permissions and registry secrets only; verify PR workflows have no push/deploy credentials and values are masked.
+- [ ] 5.6 Publish CI summaries and artifacts: test reports, coverage, image digest and traceability. Verify retention and links.
+- [ ] 5.7 Document that staging/production deployment and rollback are manual operator actions in this change and link the CD follow-up. Verify no `cd.yml` deploy workflow is required for acceptance.
+- [ ] 5.8 Run a PR with a deliberately failing lint, unit test, coverage threshold and traceability entry; verify each blocks merge.
 
 ## 6. Documentation
 
@@ -71,7 +71,7 @@
 ## 7. Verification and acceptance
 
 - [ ] 7.1 Deploy locally from a clean checkout with one command and run unit, integration, proxy, security, E2E and coverage suites. Verify every blocking result passes.
-- [ ] 7.2 Deploy staging with a real domain and ACME; run an external port scan showing only 22/80/443; record the result.
+- [ ] 7.2 Deploy staging manually with `scripts/deploy.sh` and a real domain/ACME; run an external port scan showing only 22/80/443; record the result.
 - [ ] 7.3 Perform a clean Debian/Ubuntu install following only `docs/deployment.md`; verify an operator reaches login, Pad, Coder terminal and code-server.
 - [ ] 7.4 Run the restore drill into a fresh environment and record users, pads, realm and Coder state.
 - [ ] 7.5 Run all P0 Use Cases through Caddy in CI/staging; verify UC-01…UC-10 are green or have approved staging gates.

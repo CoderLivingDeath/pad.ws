@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Every change is verified by required CI checks, coverage is visible, and staging or production deployment and rollback are automated through protected environments.
+Every change is verified by required CI checks for tests, lints, coverage and traceability, and release images are built and recorded for manual deployment.
 
 ## ADDED Requirements
 
 ### Requirement: Required CI checks
 
-Pull requests SHALL require config, unit, integration, proxy, security, E2E, coverage and deployment checks. A failing required check SHALL block merge.
+Pull requests SHALL require config, unit, integration, proxy, security, E2E, coverage, traceability and deployment-invariant checks. A failing required check SHALL block merge.
 
 #### Scenario: All checks pass
 
@@ -27,16 +27,16 @@ CI SHALL run the relevant suites for changed areas and SHALL skip expensive stac
 #### Scenario: Edge change runs edge checks
 
 - **WHEN** a pull request changes `deploy/**`, `docker-compose*.yml` or `scripts/**`
-- **THEN** config, proxy, security and deploy checks run
+- **THEN** config, proxy, security and deploy invariants run
 
 #### Scenario: Documentation-only change is lightweight
 
 - **WHEN** a pull request changes only documentation
-- **THEN** expensive stack and E2E jobs are skipped while required lightweight checks still run
+- **THEN** stack and E2E jobs are skipped while lightweight checks still run
 
-### Requirement: Image build and publication
+### Requirement: Image build and release recording
 
-CI SHALL build the Pad image for pull requests and SHALL publish immutable digest-pinned images on `main` and release tags. Actions and images SHALL be pinned.
+CI SHALL build the Pad image for pull requests without pushing, and SHALL build and publish digest-pinned images for release tags. Actions and base images SHALL be pinned.
 
 #### Scenario: Pull request builds without pushing
 
@@ -46,74 +46,46 @@ CI SHALL build the Pad image for pull requests and SHALL publish immutable diges
 #### Scenario: Release image is immutable
 
 - **WHEN** a release tag is pushed
-- **THEN** the image is published with recorded digests and can be referenced by rollback
+- **THEN** the image is published with recorded digests and can be referenced by the manual rollback procedure
 
-### Requirement: Staging deployment
+### Requirement: CI secrets and permissions
 
-Merges to `main` SHALL deploy to staging through a protected environment after required checks pass, and SHALL run post-deploy smoke checks.
+CI SHALL use least-privilege workflow permissions and masked registry credentials. It SHALL NOT require production SSH keys, application secrets or deployment credentials.
 
-#### Scenario: Main deploys to staging
+#### Scenario: Pull request has read-only scope
 
-- **WHEN** a commit lands on `main` and checks pass
-- **THEN** the staging environment deploys the recorded digest and smoke checks pass
+- **WHEN** CI runs for a pull request
+- **THEN** it has read access and no registry push or deployment secret
 
-#### Scenario: Staging smoke fails
+#### Scenario: Release credentials are masked
 
-- **WHEN** staging smoke fails
-- **THEN** the deployment is marked failed and the previous staging release is restored
+- **WHEN** a release workflow pushes an image
+- **THEN** the registry token is provided by a protected environment or repository secret and never printed
 
-### Requirement: Production deployment
+### Requirement: CI visibility
 
-Production deployment SHALL require a release tag or manual dispatch, environment approval, a pre-deploy backup and successful smoke checks. It SHALL NOT run automatically on every commit.
-
-#### Scenario: Approved release deploys
-
-- **WHEN** an operator approves a production deployment for a recorded digest
-- **THEN** the backup, deployment, migrations and smoke checks complete and the release is recorded
-
-#### Scenario: Unapproved release is blocked
-
-- **WHEN** production deployment is requested without approval
-- **THEN** the workflow waits and does not start the deployment
-
-### Requirement: Automated rollback
-
-A failed deployment SHALL support one-command or one-workflow rollback to the previous digests and database backup, followed by smoke verification.
-
-#### Scenario: Rollback restores service
-
-- **WHEN** a deployment fails or is rejected after release
-- **THEN** rollback restores the previous digests and backup and smoke checks pass
-
-#### Scenario: Rollback evidence is recorded
-
-- **WHEN** rollback completes
-- **THEN** the workflow records the restored digests, backup and verification result
-
-### Requirement: Secrets and permissions
-
-CI/CD SHALL use GitHub Environments or equivalent secret stores, least-privilege workflow permissions and masked values. Secrets SHALL NOT appear in logs or build artifacts.
-
-#### Scenario: Workflow uses protected secrets
-
-- **WHEN** a deployment workflow accesses registry, SSH or application secrets
-- **THEN** the values come from a protected environment and are masked
-
-#### Scenario: Secret leakage is blocked
-
-- **WHEN** a workflow would print a secret-bearing command
-- **THEN** the step fails or redacts the value
-
-### Requirement: CI/CD visibility
-
-Each run SHALL publish a summary with test results, coverage, image digests, deployment URL and smoke status, and SHALL retain artifacts for the configured period.
+Each run SHALL publish a summary with test results, coverage, image digest and artifact links, and SHALL retain artifacts for the configured period.
 
 #### Scenario: Pull request summary
 
 - **WHEN** CI completes on a pull request
 - **THEN** the summary links the test reports, coverage and image digest
 
-#### Scenario: Deployment record
+#### Scenario: Failing job is diagnosable
 
-- **WHEN** a staging or production deployment completes
-- **THEN** the environment, digests, operator or approver and smoke result are recorded
+- **WHEN** a required job fails
+- **THEN** the summary and artifacts identify the failed suite and the failing check
+
+### Requirement: Manual release handoff
+
+CI SHALL NOT deploy to staging or production. It SHALL publish a digest-pinned release manifest, and deployment and rollback SHALL require an explicit operator command.
+
+#### Scenario: CI stops at a release artifact
+
+- **WHEN** CI completes on `main` or a release tag
+- **THEN** it publishes test, coverage and image digest evidence but does not connect to a deployment host
+
+#### Scenario: Operator deploys explicitly
+
+- **WHEN** an operator runs the deploy or rollback command with a recorded digest set
+- **THEN** the deployment happens outside CI and the operator records the result

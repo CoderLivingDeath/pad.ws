@@ -72,16 +72,30 @@ Deployment SHALL validate every required environment value across all services b
 - **WHEN** the preflight configuration is reviewed
 - **THEN** it covers Pad, Keycloak, Coder, PostgreSQL, Redis and Caddy values, not only Pad
 
-### Requirement: Backup retention and offsite copy
+### Requirement: Backup retention and integrity
 
-Production backup SHALL define a retention period, verify dump integrity and copy the encrypted backup to a location outside the VPS. A missing or unverifiable backup SHALL be treated as a failed operational check.
+Production backup SHALL define a retention period and verify dump integrity. A missing, corrupt or unverifiable backup SHALL be treated as a failed operational check. Offsite and encrypted backup are explicitly out of scope for this change and tracked as follow-up.
 
-#### Scenario: Retention and offsite copy exist
+#### Scenario: Retention is applied
 
 - **WHEN** the backup job completes
-- **THEN** old dumps are pruned by policy and an encrypted copy exists off-host
+- **THEN** dumps older than the retention period are pruned by policy
 
 #### Scenario: Integrity failure is visible
 
 - **WHEN** a dump cannot be listed or restored
 - **THEN** the backup check fails and alerts the operator
+
+### Requirement: Residual risk register
+
+Every accepted production risk SHALL be listed in `risk-register.md` with severity, impact, mitigation, owner and a link to the governing requirement. A blocking risk without an entry SHALL fail readiness review.
+
+#### Scenario: Accepted risk is linked
+
+- **WHEN** the risk register is reviewed
+- **THEN** every accepted risk names its severity, mitigation, owner and spec requirement
+
+#### Scenario: Unregistered blocker fails review
+
+- **WHEN** a blocking risk has no register entry
+- **THEN** production readiness fails and names the missing risk
