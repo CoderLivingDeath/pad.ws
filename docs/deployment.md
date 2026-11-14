@@ -4,6 +4,69 @@ This document is the operator runbook for a single-VPS deployment of Pad with th
 
 For day-to-day development use the `docker-compose.yml` host-networking stack; for anything reachable from the internet use `docker-compose.prod.yml` and this runbook.
 
+## 0. One-command deployment
+
+`scripts/deploy.sh` is the supported entry point for local, staging and production. It replaces the manual steps in sections 4–8 for new deployments; keep this runbook for the reasoning and for incident work.
+
+```bash
+# Local acceptance stack (*.pad.test, internal CA)
+./scripts/deploy.sh up --profile local
+
+# Staging/production: supply the public domains and the admin allowlist
+./scripts/deploy.sh up --profile production \
+  --domain example.com \
+  --allowlist "203.0.113.0/24"
+
+# Validate the resolved configuration without starting containers
+./scripts/deploy.sh up --profile production --domain example.com \
+  --allowlist "203.0.113.0/24" --dry-run
+```
+
+`up` performs, in order: profile and `.env` resolution, compose-wide preflight, secret generation, infrastructure start, idempotent Keycloak realm/client reconcile, Coder template/key/admin bootstrap, health wait, smoke gate and release recording. It is safe to rerun.
+
+### Configuration precedence
+
+Highest wins:
+
+1. CLI flag (`--domain`, `--allowlist`, `--set KEY=VALUE`)
+2. Process environment
+3. `deploy/profiles/<profile>.env` (defaults only)
+4. `.env` in the deployment directory (unknown keys are preserved)
+5. `deploy/releases/<version>.json` image defaults
+
+Profiles contain defaults, not secrets. `local` may use the open `ADMIN_ALLOWLIST`; `staging` and `production` require `PAD_DOMAIN`, `AUTH_DOMAIN`, `CODER_DOMAIN`, `COOKIE_DOMAIN`, `ADMIN_ALLOWLIST` and `ACME_EMAIL`. The resolver writes a 0600 `.env`, merges it with existing unknown keys, then validates with `docker compose config`.
+
+### Operator subcommands
+
+| Command | Purpose |
+| --- | --- |
+| `up` | Resolve config, start the stack, bootstrap and smoke-check |
+| `down` | Stop containers, keep volumes |
+| `destroy --yes-i-want-to-destroy-data` | Stop containers and delete volumes; refuses without the flag |
+| `status` | Health, image digests, certificate expiry, backup age, Coder key age |
+| `logs [-f]` | Compose logs |
+| `backup` | Back up `pad`, `keycloak`, `coder` with integrity verification |
+| `restore [--drill]` | Restore the latest dumps, or run an isolated drill |
+| `rotate-key` | Create a new Coder API key, update `.env`, restart Pad, verify the workspace state |
+| `upgrade <version>` | Pre-upgrade backup, apply `deploy/releases/<version>.json`, verify |
+| `rollback` | Restore the previous digest set and the backup recorded with it |
+
+`make deploy PROFILE=production DOMAIN=example.com ALLOWLIST="203.0.113.0/24"` wraps `up`; `make status|logs|backup|restore|rollback` wrap the rest.
+
+Destructive teardown always requires the explicit flag:
+
+```bash
+./scripts/deploy.sh destroy
+# ERROR: destroy requires --yes-i-want-to-destroy-data  (exit 1)
+
+./scripts/deploy.sh destroy --yes-i-want-to-destroy-data
+# Stack destroyed and volumes removed.
+```
+
+### Secrets
+
+`up` generates missing `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `OIDC_CLIENT_SECRET` and `CODER_API_KEY` with `openssl rand`, stores them only in `.env` (mode 0600) and never prints them. Reusing an existing `.env` preserves the current secrets and volumes.
+
 ## 1. Environment variable matrix
 
 | Variable | Consumer | Production value | Local value |
@@ -33,9 +96,11 @@ For day-to-day development use the `docker-compose.yml` host-networking stack; f
 | `KEYCLOAK_ADMIN_PASSWORD` | Keycloak | generated password | `__CHANGE_ME__` |
 | `KEYCLOAK_DB` | Keycloak | `keycloak` | `keycloak` |
 | `CODER_API_KEY` | Pad | generated API key | `__CHANGE_ME__` |
+| `CODER_API_KEY_CREATED_AT` | Pad, `status.sh` | RFC-3339 creation time; warns at 6 days | empty |
 | `CODER_URL` | Pad, Coder | `https://coder.example.com` | `https://coder.pad.test` |
 | `CODER_INTERNAL_URL` | Pad | `http://coder:7080` (default: `CODER_URL`) | `http://coder:7080` |
 | `CODER_TEMPLATE_ID` | Pad | template UUID | `__CHANGE_ME__` |
+| `BACKUP_RETENTION_DAYS` | `backup-postgres.sh` | `30` | `7` |
 | `CODER_DEFAULT_ORGANIZATION` | Pad | organization UUID | `__CHANGE_ME__` |
 | `CODER_WORKSPACE_NAME` | Pad | default workspace name | `ubuntu` |
 | `CODER_DB` | Coder | `coder` | `coder` |
@@ -44,8 +109,9 @@ For day-to-day development use the `docker-compose.yml` host-networking stack; f
 | `ADMIN_ALLOWLIST` | Caddy | operator CIDRs | `0.0.0.0/0 ::/0` |
 | `PAD_ALLOWED_ROLES` | Pad | `pad-user` | `pad-user` |
 | `SESSION_COOKIE_NAME` | Pad, Caddy | `session_id` | `session_id` |
-| `TRUSTED_PROXY_IPS` | Pad | `*` or fixed Caddy IP | `*` |
+| `TRUSTED_PROXY_IPS` | Pad | `172.28.0.2` (static Caddy address on the `edge` network) | `172.28.0.2` |
 | `API_WORKERS` | Pad | `1` | `1` |
+| `CADDY_IMAGE`, `POSTGRES_IMAGE`, `REDIS_IMAGE`, `KEYCLOAK_IMAGE`, `CODER_IMAGE`, `PAD_IMAGE` | Compose | digest-pinned from `deploy/releases/<version>.json` | local defaults from `.env.local.template` |
 | `STATIC_DIR` | Pad | `/app/frontend/dist` | `/app/frontend/dist` |
 | `ASSETS_DIR` | Pad | `/app/frontend/dist/assets` | `/app/frontend/dist/assets` |
 
@@ -351,47 +417,38 @@ PAD_BASE_URL=https://pad.pad.test \
 
 ### Backup
 
-`scripts/backup-postgres.sh` dumps the Pad, Keycloak and Coder databases to timestamped, compressed files. Run it from the project root with the production compose file active:
+`scripts/backup-postgres.sh` writes a compressed **custom-format** dump per database (`backups/pad_<timestamp>.dump.gz`, `keycloak_*`, `coder_*`). Each dump is verified immediately with `pg_restore --list`; a corrupt dump fails the backup and the script exits non-zero.
 
 ```bash
-export COMPOSE_FILE=docker-compose.prod.yml
-./scripts/backup-postgres.sh
+./scripts/deploy.sh backup
+# or directly
+BACKUP_RETENTION_DAYS=30 ./scripts/backup-postgres.sh
 ```
 
-The script creates `backups/` with mode `700` and files with mode `600`. It never prints passwords. To keep more than one backup, set a retention window:
-
-```bash
-BACKUP_RETENTION_DAYS=7 COMPOSE_FILE=docker-compose.prod.yml ./scripts/backup-postgres.sh
-```
+`backups/` is mode `700`, files are mode `600`, and passwords are never printed. `BACKUP_RETENTION_DAYS` prunes older dumps (`find ... -mtime +N -delete`); pruning is skipped when the value is empty. Offsite copy and encryption are **not** part of this deployment — see residual risks R-01/R-02 in `openspec/changes/production-readiness-and-delivery/risk-register.md`.
 
 ### Restore
 
-Stop the stack, restore each database from its dump, then start again:
+The supported path restores all three databases, verifies each dump first and refuses to continue when a dump is missing or corrupt:
+
+```bash
+# Restore the latest dumps into the running stack
+./scripts/deploy.sh restore
+
+# Isolated drill into a fresh volume; leaves the running stack untouched
+./scripts/deploy.sh restore --drill
+```
+
+`--drill` creates a scratch PostgreSQL container, restores `pad`, `keycloak` and `coder`, checks that the expected tables and the realm row exist, then removes the scratch volume. Use it as the periodic restore drill and record the date and result.
+
+Manual fallback (only when the script is unavailable):
 
 ```bash
 export COMPOSE_FILE=docker-compose.prod.yml
 docker compose down
-
-# Example restore for the pad database
-gunzip < backups/pad_YYYYMMDD_HHMMSS.sql.gz | \
-  docker compose exec -T postgres psql -U "$POSTGRES_USER" -d pad
-
-# Repeat for keycloak and coder
-gunzip < backups/keycloak_YYYYMMDD_HHMMSS.sql.gz | \
-  docker compose exec -T postgres psql -U "$POSTGRES_USER" -d keycloak
-
-gunzip < backups/coder_YYYYMMDD_HHMMSS.sql.gz | \
-  docker compose exec -T postgres psql -U "$POSTGRES_USER" -d coder
-
-docker compose up -d
-```
-
-Test restores into scratch databases periodically:
-
-```bash
-docker compose exec -T postgres psql -U "$POSTGRES_USER" -c 'CREATE DATABASE pad_restore;'
-gunzip < backups/pad_YYYYMMDD_HHMMSS.sql.gz | \
-  docker compose exec -T postgres psql -U "$POSTGRES_USER" -d pad_restore
+gunzip -c backups/pad_<timestamp>.dump.gz | \
+  docker compose run --rm -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d pad --clean --if-exists'
+# repeat for keycloak and coder, then: docker compose up -d
 ```
 
 ### Caddy certificate persistence
@@ -408,40 +465,41 @@ docker compose -f docker-compose.prod.yml run --rm --no-deps caddy \
 
 ## 11. Upgrade and rollback procedure
 
+Releases are recorded as digest sets in `deploy/releases/<version>.json`. The compose file reads `${CADDY_IMAGE}`, `${PAD_IMAGE}`, `${POSTGRES_IMAGE}`, `${REDIS_IMAGE}`, `${KEYCLOAK_IMAGE}` and `${CODER_IMAGE}`; nothing is deployed by floating tag.
+
 ### Upgrade
 
-1. Read `docker-compose.prod.yml` and note the image tags/digests currently running.
-2. Back up PostgreSQL and Caddy data.
-3. Pull new images or update the compose file.
-4. Recreate services:
+```bash
+./scripts/deploy.sh upgrade 1.2.0
+```
 
-   ```bash
-   docker compose -f docker-compose.prod.yml up -d --force-recreate
-   ```
+The command:
 
-5. Run the smoke test and the manual checklist.
-6. Watch Caddy certificate issuance and service health for at least 10 minutes.
+1. saves the current release as `.deploy-state/previous.json`;
+2. takes a pre-upgrade backup and records the dump paths next to the previous release;
+3. writes the target digests into `.env`;
+4. asserts with `docker compose config` that every service resolves to the manifest digest;
+5. recreates the services, waits for health and runs the smoke gate.
+
+If any step fails, the stack is left on the target digests for inspection; run `./scripts/deploy.sh rollback` to return to the previous set.
 
 ### Rollback
 
-If verification fails:
+```bash
+./scripts/deploy.sh rollback
+```
 
-1. Stop the new stack:
+Rollback restores `previous.json` digests, restores the exact backup recorded with that release (not merely the newest dump), recreates the services and re-runs the smoke gate. Keep old volumes until the rollback is confirmed working.
 
-   ```bash
-   docker compose -f docker-compose.prod.yml down
-   ```
+### Coder key rotation
 
-2. Restore the previous `docker-compose.prod.yml` and `.env` from your version control or backup.
-3. Restore the PostgreSQL dumps if the schema or data changed.
-4. Restore the Caddy data volume if certificate state changed.
-5. Start the previous stack:
+Coder API keys have a seven-day maximum lifetime. `CODER_API_KEY_CREATED_AT` records the creation time; `status.sh` warns at six days.
 
-   ```bash
-   docker compose -f docker-compose.prod.yml up -d
-   ```
+```bash
+./scripts/deploy.sh rotate-key
+```
 
-Keep old volumes until the rollback is confirmed working.
+The command creates a new key with a Coder owner session, updates `.env`, restarts Pad, revokes the old key and verifies `GET /api/workspace/state` returns `200`. If no owner session is available, log in to Coder as the owner once and rerun.
 
 ## 12. Security considerations
 
@@ -483,6 +541,35 @@ Mitigations:
 - Keep Coder patched.
 - Consider rootless Docker or a Docker socket proxy as follow-up work.
 
+### Admin allowlist model
+
+`ADMIN_ALLOWLIST` is a space-separated CIDR list for the Keycloak admin surface. The `local` profile may use `0.0.0.0/0 ::/0`; `staging` and `production` require an explicit list. `deploy/preflight.sh` rejects an empty, malformed, placeholder or `0.0.0.0/0 ::/0` value in production **before any container starts**. Set operator VPN or office ranges and keep the list minimal.
+
+### Trusted proxy boundary
+
+Caddy runs on the dedicated `edge` network at the static address `172.28.0.2` (subnet `172.28.0.0/16`). Pad accepts forwarded scheme/client headers only from `TRUSTED_PROXY_IPS=172.28.0.2`; no service publishes a host port except Caddy on `80/443`. If the subnet changes, update the compose IPAM block and the profile value together and re-run `preflight.sh`.
+
+### Coder edge exceptions
+
+Coder deliberately bypasses Pad for machine and asset paths, because the Coder CLI, workspace agent and IDE clients authenticate with Coder tokens:
+
+- `/api/v2/*`, `/derp`, `/derp/*`, `/bin/*`, `/@*`
+- `/assets/*`, `/static/*`, `/favicon.ico` on the Coder host
+
+Coder UI `/` and everything else on the Coder host stay behind `forward_auth`. `session_id` is stripped from every proxied request. `/bin/coder-linux-amd64` and `/derp` must stay public or the workspace agent cannot connect — do not add them to the gated list.
+
+### Rate limiting posture
+
+The standard `caddy:2-alpine` build has no `rate_limit` directive. Keycloak brute-force protection is enabled (`failureFactor=5`, `maxDeltaTimeSeconds=300`, progressive waits up to 900 s) and verified by `tests/security/test_brute_force.py`. Application-level Redis counters and a custom Caddy build remain follow-ups; do not claim the edge is rate-limited beyond Keycloak.
+
+### Operational monitoring baseline
+
+```bash
+./scripts/deploy.sh status
+```
+
+`status.sh` checks container health, image digests, certificate expiry (warns within 14 days), the age of the last backup and the Coder key age (warns at 6 days, fails at 7). Any failed check exits non-zero, so it can drive a cron job or an external probe. It is a baseline, not full observability: no metrics, alert routing or log shipping is included.
+
 ### Fail-closed `forward_auth`
 
 Caddy delegates authentication to Pad's `/api/auth/verify`. If Pad is unavailable, returns an error or takes too long, Caddy denies the protected request with `502 Bad Gateway` or `503 Service Unavailable`. It never allows an unauthenticated request to reach Pad, Coder browser surfaces or Keycloak `/admin*`.
@@ -516,16 +603,16 @@ The following items are accepted for this change with a documented decision and 
 
 | Item | Decision | Owner / follow-up reference |
 | --- | --- | --- |
-| Coder static-asset verification cost | Keep all Coder browser surfaces gated initially and measure latency. | Project: if latency is material, exempt `/static/*` and `/assets/*` or add a short-lived signed verification cache. |
-| Image and dependency pinning | Workflow actions are pinned; container image digests and dependency lockfiles are follow-up. | Project: pin image digests in `docker-compose.prod.yml`, record digests for rollback, add `pip-audit`/`npm audit`/Trivy scanning. |
-| Preflight across services | Pad validates its environment at startup; a compose-wide preflight is follow-up. | Project: add a preflight container or wrapper that validates every required value before any service starts. |
-| Backup retention, offsite and encryption | Backups are local and unencrypted by default. | Operator: schedule backups, define retention, copy encrypted dumps off-site and run periodic restore drills. |
-| Coder first-user ownership | Manual bootstrap gate. | Operator: log into Coder first with the intended owner account or assign owners explicitly; verify in staging. |
-| Rate limiting | Out of scope for this change. | Project: document the risk or build a custom Caddy image with `rate_limit` later. |
-| Monitoring and alerting | Healthchecks and logs only. | Project: add a monitoring stack (metrics/alerting) as a separate change. |
+| Offsite backup and encryption | Local timestamped backups with `BACKUP_RETENTION_DAYS` and `pg_restore --list` integrity only; no offsite copy and no encryption at rest. | Operator: add encrypted S3/restic or rclone and an offsite restore drill (risk R-01/R-02). |
+| Automated CD | CI runs tests, lints, coverage and traceability; staging/production deploy and rollback stay one-command operator actions. | Platform: protected environments, SSH runner and deploy secrets are a separate change (risk R-04). |
+| Rate limiting | Keycloak brute-force protection is enabled and tested; the standard Caddy build has no `rate_limit` directive. | Platform: application-level Redis limits or a custom Caddy build (risk R-03). |
+| Monitoring and alerting | `status.sh` covers health, certificates, backup age and Coder key age; no metrics or alert routing. | Operator: drive `status.sh` from cron/probe and add a metrics stack separately (risk R-14). |
+| Coder workspace isolation | Relies on Coder's own boundary; the Docker socket gives host-root-equivalent access. | Operator: dedicated VPS, trusted users only, patch Coder; rootless/socket proxy follow-up (risk R-13). |
+| Secrets in container environment | `.env` is mode `0600`, but values are visible via `docker inspect`. | Operator: restrict host access; external secret manager is a follow-up. |
+| Dependency and image scanning | Images and workflow actions are digest/SHA pinned; no vulnerability scanner runs in CI. | Platform: add `pip-audit`, `npm audit` or Trivy as a follow-up job. |
 | Break-glass SSH to Keycloak | Accepted operator-only path. | Operator: restrict SSH to operators and document the tunnel in `deploy/keycloak/README.md`. |
-| Coder workspace isolation | Out of scope; relies on Coder's own boundary. | Operator: accept that workspace isolation is not a host boundary; trusted users only. |
-| Secrets in container environment | Accepted; `.env` is mode `0600` but values are visible to `docker inspect`. | Operator: restrict host access and consider an external secret manager as a follow-up. |
+| Coder key lifetime | Keys expire after seven days; `rotate-key` and the `status.sh` age warning are the mitigation. | Operator: rotate on the six-day warning or schedule `deploy.sh rotate-key` (risk R-07). |
+| Public test stand | `sslip.io` domain, test users and test credentials; not a production deployment. | Operator: destroy after acceptance; production needs owned DNS and fresh secrets (risk R-12). |
 
 ## 14. Troubleshooting
 

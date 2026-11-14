@@ -4,15 +4,15 @@
 
 ## 1. Production blockers and hardening
 
-- [ ] 1.1 Add `deploy/preflight.sh` with a compose-wide required-variable check and a production guard that rejects empty, malformed or `0.0.0.0/0 ::/0` `ADMIN_ALLOWLIST`. Verify production startup fails before any container starts; local remains allowed.
+- [x] 1.1 Add `deploy/preflight.sh` with a compose-wide required-variable check and a production guard that rejects empty, malformed or `0.0.0.0/0 ::/0` `ADMIN_ALLOWLIST`. Verify production startup fails before any container starts; local remains allowed.
 - [ ] 1.2 Add `CODER_API_KEY_CREATED_AT` and `scripts/rotate-coder-key.sh` using a Coder owner session/API key. Verify rotation updates `.env`, restarts Pad, revokes the old key and keeps `/api/workspace/state` at 200.
-- [ ] 1.3 Extend `scripts/status.sh` with Coder key age (warn at six days), certificate expiry, last backup age and container health. Verify each condition produces a visible failure/exit code.
+- [x] 1.3 Extend `scripts/status.sh` with Coder key age (warn at six days), certificate expiry, last backup age and container health. Verify each condition produces a visible failure/exit code.
 - [ ] 1.4 Clear every documented Coder cookie in the `/__pad/logout` Caddy route (`coder_session_token`, `coder_oauth_state`, `oauth_state`, `oauth_redirect`, `oauth_pkce_verifier`, `csrf_token`). Verify a second user on the same browser does not inherit the first Coder session.
-- [ ] 1.5 Pin Caddy, Pad, PostgreSQL, Redis, Keycloak and Coder images by digest through `${*_IMAGE}` variables and write `deploy/releases/<version>.json`. Verify rollback can start every service from the recorded digest set.
-- [ ] 1.6 Add `scripts/restore-postgres.sh` for all three databases with an integrity check (`pg_restore --list`) and a staging drill into a fresh volume. Verify users, pads, realm and Coder state are restored.
-- [ ] 1.7 Add backup retention and integrity verification (`BACKUP_RETENTION_DAYS`, `pg_restore --list`). Verify old dumps are pruned and a corrupt dump fails the check. Offsite copy and encryption are follow-up risks R-01/R-02, not part of this change.
+- [x] 1.5 Pin Caddy, Pad, PostgreSQL, Redis, Keycloak and Coder images by digest through `${*_IMAGE}` variables and write `deploy/releases/<version>.json`. Verify rollback can start every service from the recorded digest set.
+- [x] 1.6 Add `scripts/restore-postgres.sh` for all three databases with an integrity check (`pg_restore --list`) and a staging drill into a fresh volume. Verify users, pads, realm and Coder state are restored.
+- [x] 1.7 Add backup retention and integrity verification (`BACKUP_RETENTION_DAYS`, `pg_restore --list`). Verify old dumps are pruned and a corrupt dump fails the check. Offsite copy and encryption are follow-up risks R-01/R-02, not part of this change.
 - [ ] 1.8 Move Caddy to a dedicated `edge` network with a static address and set `TRUSTED_PROXY_IPS` to that address. Verify a direct request with a forged `X-Forwarded-Proto` is not treated as HTTPS.
-- [ ] 1.9 Add a FastAPI route-inventory test that classifies every route as public or protected. Verify a new sensitive route without `require_auth` fails the test.
+- [x] 1.9 Add a FastAPI route-inventory test that classifies every route as public or protected. Verify a new sensitive route without `require_auth` fails the test.
 - [ ] 1.10 Add a log-hygiene test that performs login, callback and logout and inspects Caddy/Pad/Keycloak/Coder logs for cookies, authorization headers, codes, state and Coder keys. Verify no secret is present.
 - [ ] 1.11 Fix `scripts/smoke-test.sh` HTML-entity decoding (`&amp;`), the `coder.py` shadowed variable and the flaky E2E return-path selector. Verify smoke and E2E pass repeatedly.
 - [ ] 1.12 Reduce WebSocket revalidation to at most 30 seconds and close the socket immediately when the session is revoked. Verify logout closes an open socket.
@@ -20,26 +20,26 @@
 
 ## 2. One-command deployment
 
-- [ ] 2.1 Add `scripts/deploy.sh` with `up`, `down`, `destroy`, `status`, `logs`, `backup`, `restore`, `rotate-key`, `upgrade` and `rollback` subcommands. Verify `--help` documents every command and destructive teardown requires confirmation.
-- [ ] 2.2 Add `deploy/profiles/local.env`, `staging.env` and `production.env` with defaults only. Verify each profile resolves without editing scripts.
-- [ ] 2.3 Implement configuration precedence (CLI > environment > profile > `.env` > defaults), write a resolved config and validate it with `docker compose config`. Verify a CLI override wins and a placeholder fails preflight.
+- [x] 2.1 Add `scripts/deploy.sh` with `up`, `down`, `destroy`, `status`, `logs`, `backup`, `restore`, `rotate-key`, `upgrade` and `rollback` subcommands. Verify `--help` documents every command and destructive teardown requires confirmation.
+- [x] 2.2 Add `deploy/profiles/local.env`, `staging.env` and `production.env` with defaults only. Verify each profile resolves without editing scripts.
+- [x] 2.3 Implement configuration precedence (CLI > environment > profile > `.env` > defaults), write a resolved config and validate it with `docker compose config`. Verify a CLI override wins and a placeholder fails preflight.
 - [ ] 2.4 Implement idempotent Keycloak bootstrap: realm import on fresh DB, then reconcile client, redirect URIs, roles, scopes and session lifetimes through Admin REST/`kcadm`. Verify rerun does not duplicate or delete data.
 - [ ] 2.5 Implement idempotent Coder bootstrap: template, `CODER_TEMPLATE_ID`, organization, API key and admin workspace. Verify a clean deploy and a rerun both succeed.
 - [ ] 2.6 Add health wait and a post-deploy smoke gate. Verify a failed check exits non-zero with the failing component and recent logs.
 - [ ] 2.7 Add `upgrade` with pre-deploy backup, digest selection, apply and verification; add `rollback` restoring the previous digest set and backup. Verify both paths against staging.
-- [ ] 2.8 Add `make deploy`, `make status`, `make logs`, `make backup`, `make restore`, `make rollback` wrappers. Verify local deploy from a clean checkout with one command.
+- [x] 2.8 Add `make deploy`, `make status`, `make logs`, `make backup`, `make restore`, `make rollback` wrappers. Verify local deploy from a clean checkout with one command.
 - [ ] 2.9 Add deploy idempotency and failure tests: rerun on a healthy stack, missing secret, unhealthy service and interrupted bootstrap. Verify data and certificates are preserved on rerun.
 
 ## 3. Coverage
 
-- [ ] 3.1 Add `pytest-cov`, `.coveragerc`/`pyproject.toml` coverage configuration and documented exclusions. Verify the backend report is generated and the 80/70/85 thresholds are enforced.
-- [ ] 3.2 Add Vitest, `@vitest/coverage-v8` and React Testing Library configuration with 70/60/70 thresholds and 80% for critical auth/session/collab modules.
-- [ ] 3.3 Add `make test-coverage` that runs backend and frontend coverage and writes `coverage/backend` and `coverage/frontend`. Verify both reports open locally.
-- [ ] 3.4 Add `coverage/baseline.json` and a ratchet check that fails on more than a one-point drop. Verify a deliberately lowered suite fails.
-- [ ] 3.5 Add `scripts/check-traceability.py` for requirements, Use Cases and tests. Verify a missing P0 UC or an unmapped blocking scenario fails.
+- [x] 3.1 Add `pytest-cov`, `.coveragerc`/`pyproject.toml` coverage configuration and documented exclusions. Verify the backend report is generated and the 80/70/85 thresholds are enforced.
+- [x] 3.2 Add Vitest, `@vitest/coverage-v8` and React Testing Library configuration with 70/60/70 thresholds and 80% for critical auth/session/collab modules.
+- [x] 3.3 Add `make test-coverage` that runs backend and frontend coverage and writes `coverage/backend` and `coverage/frontend`. Verify both reports open locally.
+- [x] 3.4 Add `coverage/baseline.json` and a ratchet check that fails on more than a one-point drop. Verify a deliberately lowered suite fails.
+- [x] 3.5 Add `scripts/check-traceability.py` for requirements, Use Cases and tests. Verify a missing P0 UC or an unmapped blocking scenario fails.
 - [ ] 3.6 Add coverage and traceability to CI with artifact upload and a pull-request summary. Verify the summary links the reports and the checks are required.
-- [ ] 3.7 Add tests for the uncovered security-critical modules until their thresholds pass: auth/session, verify, Coder API errors, route authorization, WebSocket revocation.
-- [ ] 3.8 Add frontend tests for auth/session/collab hooks and critical UI paths until their thresholds pass; document any justified exclusion.
+- [x] 3.7 Add tests for the uncovered security-critical modules until their thresholds pass: auth/session, verify, Coder API errors, route authorization, WebSocket revocation.
+- [x] 3.8 Add frontend tests for auth/session/collab hooks and critical UI paths until their thresholds pass; document any justified exclusion.
 
 ## 4. Use Cases and E2E
 
@@ -62,10 +62,10 @@
 
 ## 6. Documentation
 
-- [ ] 6.1 Update `docs/deployment.md` for one-command deploy, profiles, configuration precedence and every operator subcommand.
-- [ ] 6.2 Document upgrade, rollback, Coder key rotation, restore and destroy with exact commands and expected output.
-- [ ] 6.3 Document monitoring, backup retention/offsite/encryption and the alert baseline.
-- [ ] 6.4 Document the Coder edge exceptions, admin allowlist model, trusted-proxy boundary and accepted residual risks.
+- [x] 6.1 Update `docs/deployment.md` for one-command deploy, profiles, configuration precedence and every operator subcommand.
+- [x] 6.2 Document upgrade, rollback, Coder key rotation, restore and destroy with exact commands and expected output.
+- [x] 6.3 Document monitoring, backup retention/offsite/encryption and the alert baseline.
+- [x] 6.4 Document the Coder edge exceptions, admin allowlist model, trusted-proxy boundary and accepted residual risks.
 - [ ] 6.5 Update `docs/testing.md` with the real traceability matrix, UC mapping, coverage gates, manual gates and test report template.
 - [ ] 6.6 Update `docs/ci.md` with required checks, staging/production promotion, approvals, rollback and secret handling.
 
