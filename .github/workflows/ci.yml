@@ -3,40 +3,75 @@ name: CI
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/backend/**'
-      - 'deploy/**'
-      - 'docker-compose.prod.yml'
-      - 'compose.test.yml'
-      - 'scripts/**'
-      - 'tests/**'
-      - 'src/frontend/**'
-      - 'docs/use-cases.md'
-      - 'docs/testing.md'
-      - 'openspec/specs/**'
-      - 'Makefile'
-      - '.github/workflows/**'
+    tags: ["v*"]
   pull_request:
     branches: [main]
-    paths:
-      - 'src/backend/**'
-      - 'deploy/**'
-      - 'docker-compose.prod.yml'
-      - 'compose.test.yml'
-      - 'scripts/**'
-      - 'tests/**'
-      - 'src/frontend/**'
-      - 'docs/use-cases.md'
-      - 'docs/testing.md'
-      - 'openspec/specs/**'
-      - 'Makefile'
-      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: pad-ws/pad.ws
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      caddy: ${{ steps.filter.outputs.caddy }}
+      deploy: ${{ steps.filter.outputs.deploy }}
+      tests: ${{ steps.filter.outputs.tests }}
+      docs: ${{ steps.filter.outputs.docs }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+
+      - name: Detect changed paths
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'src/backend/**'
+              - 'requirements-dev.txt'
+              - '.coveragerc'
+            frontend:
+              - 'src/frontend/**'
+            caddy:
+              - 'deploy/Caddyfile*'
+              - 'deploy/caddy/**'
+            deploy:
+              - 'deploy/**'
+              - 'docker-compose*.yml'
+              - 'compose.test.yml'
+              - 'scripts/**'
+            tests:
+              - 'tests/**'
+            docs:
+              - 'docs/**'
+              - 'openspec/specs/**'
+              - 'README.md'
+            workflows:
+              - '.github/workflows/**'
+
   config:
+    needs: changes
+    if: >-
+      needs.changes.outputs.caddy == 'true' ||
+      needs.changes.outputs.deploy == 'true' ||
+      needs.changes.outputs.workflows == 'true' ||
+      needs.changes.outputs.backend == 'true' ||
+      needs.changes.outputs.frontend == 'true' ||
+      needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -49,7 +84,7 @@ jobs:
           redis_password="$(openssl rand -hex 16)"
           keycloak_admin_password="$(openssl rand -hex 16)"
           coder_api_key="$(openssl rand -hex 32)"
-                sed \
+          sed \
             -e "s/^POSTGRES_PASSWORD=__CHANGE_ME__$/POSTGRES_PASSWORD=${postgres_password}/" \
             -e "s/^REDIS_PASSWORD=__CHANGE_ME__$/REDIS_PASSWORD=${redis_password}/" \
             -e "s/^KEYCLOAK_ADMIN_PASSWORD=__CHANGE_ME__$/KEYCLOAK_ADMIN_PASSWORD=${keycloak_admin_password}/" \
@@ -59,7 +94,6 @@ jobs:
             -e "s/^CODER_DEFAULT_ORGANIZATION=__CHANGE_ME__$/CODER_DEFAULT_ORGANIZATION=00000000-0000-0000-0000-000000000000/" \
             -e "s/^CODER_TEMPLATE_ID=__CHANGE_ME__$/CODER_TEMPLATE_ID=00000000-0000-0000-0000-000000000000/" \
             .env.local.template > .env.test
-          # docker-compose.prod.yml loads .env via env_file, so a .env must exist.
           cp .env.test .env
 
       - name: Validate compose configuration
@@ -92,7 +126,27 @@ jobs:
       - name: Check pinned actions
         run: ./scripts/check-actions-pinned.sh
 
+      - name: Lint workflows with actionlint
+        run: |
+          docker run --rm \
+            -v "$PWD:/repo" \
+            -w /repo \
+            rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Config checks"
+            echo ""
+            echo "- Compose config: $([[ '${{ job.status }}' == 'success' ]] && echo pass || echo fail)"
+            echo "- Caddyfile validation: $([[ '${{ job.status }}' == 'success' ]] && echo pass || echo fail)"
+            echo "- Action pins: $([[ '${{ job.status }}' == 'success' ]] && echo pass || echo fail)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   unit:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -102,6 +156,10 @@ jobs:
         uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            src/backend/requirements.txt
+            requirements-dev.txt
 
       - name: Install dependencies
         run: |
@@ -110,9 +168,33 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Run unit tests
-        run: pytest tests/unit
+        run: pytest tests/unit -q --junitxml=test-results/unit/junit.xml
+
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: unit-test-results
+          path: test-results/unit
+          retention-days: 14
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Unit tests"
+            echo ""
+            echo "Result: ${{ job.status }}"
+            echo "Artifact: unit-test-results"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   stack:
+    needs: [changes, config]
+    if: >-
+      needs.changes.outputs.backend == 'true' ||
+      needs.changes.outputs.deploy == 'true' ||
+      needs.changes.outputs.caddy == 'true' ||
+      needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -122,6 +204,10 @@ jobs:
         uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            src/backend/requirements.txt
+            requirements-dev.txt
 
       - name: Install Python test dependencies
         run: |
@@ -144,17 +230,39 @@ jobs:
       - name: Run proxy and security suites
         env:
           CA_BUNDLE: ${{ github.workspace }}/caddy-root.crt
-        run: pytest tests/proxy tests/security -m "proxy or security" -v
+        run: pytest tests/proxy tests/security -m "proxy or security" -v --junitxml=test-results/stack/proxy-security-junit.xml
 
       - name: Run deployment checks
         run: bash tests/deploy/run-checks.sh
+
+      - name: Upload stack test results
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: stack-test-results
+          path: test-results/stack
+          retention-days: 14
 
       - name: Stop test environment
         if: always()
         run: bash scripts/test-env.sh down
 
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Stack checks"
+            echo ""
+            echo "Result: ${{ job.status }}"
+            echo "Artifacts: stack-test-results"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   e2e:
-    needs: stack
+    needs: [changes, stack]
+    if: >-
+      needs.changes.outputs.frontend == 'true' ||
+      needs.changes.outputs.backend == 'true' ||
+      needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -163,7 +271,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "20"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
 
       - name: Install Playwright
         run: |
@@ -180,11 +290,132 @@ jobs:
       - name: Run E2E tests
         run: make test-e2e
 
+      - name: Upload E2E test results
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: e2e-test-results
+          path: tests/e2e/test-results
+          retention-days: 14
+
       - name: Stop test environment
         if: always()
         run: bash scripts/test-env.sh down
 
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## E2E tests"
+            echo ""
+            echo "Result: ${{ job.status }}"
+            echo "Artifacts: e2e-test-results"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  image:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+
+      - name: Set up QEMU
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        id: buildx
+
+      - name: Log in to GitHub Container Registry
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+
+      - name: Build and push Pad image
+        id: build
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
+        with:
+          context: .
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          platforms: ${{ startsWith(github.ref, 'refs/tags/v') && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Write release manifest
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          mkdir -p deploy/releases
+          tag="${GITHUB_REF#refs/tags/}"
+          digest="${{ steps.build.outputs.digest }}"
+          manifest="deploy/releases/${tag}.json"
+          cat > "$manifest" <<EOF
+          {
+            "version": "$tag",
+            "digest": "$digest",
+            "image": "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag",
+            "digest_image": "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${digest}",
+            "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "source": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+          echo "manifest=$manifest" >> "$GITHUB_ENV"
+          echo "digest=$digest" >> "$GITHUB_ENV"
+
+      - name: Upload release manifest
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: release-manifest-${{ github.ref_name }}
+          path: deploy/releases/v*.json
+          retention-days: 90
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Image"
+            echo ""
+            echo "Result: ${{ job.status }}"
+            echo "Pushed: ${{ startsWith(github.ref, 'refs/tags/v') }}"
+            echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+            if [[ -n "${{ steps.build.outputs.digest }}" ]]; then
+              echo "Digest: ${{ steps.build.outputs.digest }}"
+            fi
+            if [[ -n "${{ env.manifest }}" ]]; then
+              echo "Manifest: ${{ env.manifest }}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   quality:
+    needs: [changes, unit, stack, e2e]
+    if: >-
+      always() &&
+      (needs.changes.outputs.backend == 'true' ||
+       needs.changes.outputs.frontend == 'true' ||
+       needs.changes.outputs.tests == 'true' ||
+       needs.changes.outputs.docs == 'true') &&
+      (needs.unit.result == 'success' || needs.unit.result == 'skipped') &&
+      (needs.stack.result == 'success' || needs.stack.result == 'skipped') &&
+      (needs.e2e.result == 'success' || needs.e2e.result == 'skipped')
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -194,11 +425,17 @@ jobs:
         uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            src/backend/requirements.txt
+            requirements-dev.txt
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "20"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
 
       - name: Install backend test dependencies
         run: |
@@ -212,27 +449,8 @@ jobs:
       - name: Run coverage gates
         run: bash scripts/run-coverage.sh
 
-      - name: Write coverage summary
-        if: always()
-        run: |
-          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json, pathlib
-          summary = pathlib.Path('coverage/frontend/coverage-summary.json')
-          print('## Coverage')
-          print('')
-          if summary.exists():
-              total = json.loads(summary.read_text())['total']
-              print('| Layer | Statements | Branches | Functions | Lines |')
-              print('| --- | --- | --- | --- | --- |')
-              print(
-                  '| frontend | {statements[pct]:.2f}% | {branches[pct]:.2f}% | '
-                  '{functions[pct]:.2f}% | {lines[pct]:.2f}% |'.format(**total)
-              )
-          backend = pathlib.Path('coverage/backend/coverage.xml')
-          print('')
-          print(f'Backend report: `{"present" if backend.exists() else "missing"}`')
-          print('Full reports are attached as the `coverage-reports` artifact.')
-          PY
+      - name: Check Use Case traceability
+        run: python3 scripts/check-traceability.py
 
       - name: Upload coverage reports
         if: always()
@@ -245,11 +463,27 @@ jobs:
             coverage/baseline.json
           retention-days: 14
 
-  traceability:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
-
-      - name: Check Use Case traceability
-        run: python3 scripts/check-traceability.py
+      - name: Write quality summary
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib, sys
+          print('## Quality gates')
+          print('')
+          summary = pathlib.Path('coverage/frontend/coverage-summary.json')
+          if summary.exists():
+              total = json.loads(summary.read_text())['total']
+              print('| Layer | Statements | Branches | Functions | Lines |')
+              print('| --- | --- | --- | --- | --- |')
+              print(
+                  '| frontend | {statements[pct]:.2f}% | {branches[pct]:.2f}% | '
+                  '{functions[pct]:.2f}% | {lines[pct]:.2f}% |'.format(**total)
+              )
+          backend = pathlib.Path('coverage/backend/coverage.xml')
+          print('')
+          print(f'Backend report: `{"present" if backend.exists() else "missing"}`')
+          print('')
+          print('Coverage reports are attached as the `coverage-reports` artifact.')
+          print('')
+          print('Traceability: see job logs for `scripts/check-traceability.py`.')
+          PY

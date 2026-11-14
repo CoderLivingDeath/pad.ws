@@ -97,7 +97,7 @@ Do not hand-edit `openspec/specs/**`; archive promotes delta specs. Use `openspe
 
 - Conventional Commits, first line ≤100 chars. Install the hook once: `git config core.hooksPath .githooks`. PR titles are linted because squash merges use them.
 - Every `uses:` must be pinned to a 40-character commit SHA; run `./scripts/check-actions-pinned.sh`. `actionlint` runs in CI.
-- Workflows: `.github/workflows/ci.yml` (config/unit/stack/e2e), `lint.yml` (commits/actionlint/pins), `docker-build.yml` (image).
+- Workflows: `.github/workflows/ci.yml` (config/unit/stack/e2e/quality/image), `lint.yml` (commits/actionlint/pins).
 - Never commit or print `.env`, `.env.test`, `caddy-root.crt`, backups, `test-results/` or credentials. The public test stand, if present, is a deployed copy outside the repo — treat it as an environment, not source of truth.
 
 ## Current gotchas
