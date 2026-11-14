@@ -43,6 +43,10 @@ is_placeholder() {
 
 # ---------------------------------------------------------------------------
 # Required variables across all services.
+#
+# CODER_TEMPLATE_ID and CODER_DEFAULT_ORGANIZATION are intentionally absent:
+# they are discovered by scripts/bootstrap-coder.sh after Coder starts and
+# written back to .env. scripts/deploy.sh validates them post-bootstrap.
 # ---------------------------------------------------------------------------
 required=(
     POSTGRES_PASSWORD
@@ -67,8 +71,6 @@ required=(
     KEYCLOAK_DB
     CODER_DB
     CODER_DB_PASSWORD_URLENCODED
-    CODER_TEMPLATE_ID
-    CODER_DEFAULT_ORGANIZATION
     DOCKER_GROUP_ID
     CADDY_IMAGE
     POSTGRES_IMAGE

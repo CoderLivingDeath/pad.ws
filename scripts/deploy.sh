@@ -584,6 +584,24 @@ cmd_up() {
     echo "Bootstrapping Coder..."
     ENV_FILE="$ENV_FILE" bash "$ROOT_DIR/scripts/bootstrap-coder.sh"
 
+    # The template and organization are discovered during bootstrap, so validate
+    # them afterwards and restart Pad to pick up the values written to .env.
+    local post_bootstrap_failed=0
+    for key in CODER_TEMPLATE_ID CODER_DEFAULT_ORGANIZATION; do
+        local value
+        value="$(grep -E "^${key}=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
+        if [[ -z "$value" ]] || [[ "$value" == "__CHANGE_ME__" ]] || [[ "$value" == "00000000-0000-0000-0000-000000000000" ]]; then
+            echo "ERROR: ${key} was not discovered during Coder bootstrap; create the docker template in the Coder UI and rerun." >&2
+            post_bootstrap_failed=1
+        fi
+    done
+    if [[ "$post_bootstrap_failed" -ne 0 ]]; then
+        return 1
+    fi
+    echo "Restarting Pad with the discovered Coder identifiers..."
+    compose up -d --force-recreate pad
+    wait_for_healthy
+
     # Run smoke checks.
     run_smoke
 
