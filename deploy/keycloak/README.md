@@ -65,6 +65,31 @@ URIs and web origins to match `https://${PAD_DOMAIN}/api/auth/callback`,
 `https://${CODER_DOMAIN}/api/v2/users/oidc/callback`, and the corresponding
 exact origins.
 
+## Brute-force protection
+
+The `pad` realm enables Keycloak brute-force detection with the following
+limits (see `realm-export.json`):
+
+| Setting | Value |
+| --- | --- |
+| `bruteForceProtected` | `true` |
+| `failureFactor` | `5` |
+| `maxDeltaTimeSeconds` | `300` |
+| `minimumQuickLoginWaitSeconds` | `60` |
+| `waitIncrementSeconds` | `60` |
+| `maxFailureWaitSeconds` | `900` |
+| `permanentLockout` | `false` |
+
+These settings apply automatically when the realm is imported on a fresh
+Keycloak database. For an existing database, or after recreating the Keycloak
+container while preserving its volume, re-run the idempotent bootstrap script:
+
+```bash
+KEYCLOAK_ADMIN_PASSWORD='...' ./deploy/keycloak/bootstrap-brute-force.sh
+```
+
+The script updates the realm in place and is safe to run multiple times.
+
 ## Realm roles
 
 Two realm roles are used:
@@ -136,13 +161,18 @@ operator.
 
 When a user logs out of Pad:
 
-1. `/api/auth/logout` deletes the Redis session key (`session:{session_id}`).
+1. `/api/auth/logout` deletes the Redis session key (`session:{session_id}`)
+   and publishes a revocation signal so any open Pad WebSocket closes
+   immediately.
 2. Caddy's next `forward_auth` request for that cookie receives `401` and
    denies access to Pad, Coder browser surfaces, and Keycloak `/admin*`.
 3. The logout response also returns a `coder_logout_url` that the frontend
-   loads in a hidden iframe to clear the `coder_session_token` cookie on the
-   Coder host, so a second Pad user on the same browser does not inherit the
-   first user's Coder session.
+   loads in a hidden iframe. Caddy's `/__pad/logout` route clears every
+   documented Coder cookie on the Coder host:
+   `coder_session_token`, `coder_oauth_state`, `oauth_state`,
+   `oauth_redirect`, `oauth_pkce_verifier` and `csrf_token`. This ensures a
+   second Pad user on the same browser does not inherit the first user's Coder
+   session.
 
 To revoke **all** Pad sessions immediately, delete every `session:*` key from
 Redis:

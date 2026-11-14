@@ -11,14 +11,14 @@
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
-  "bruteForceProtected": false,
+  "bruteForceProtected": true,
   "permanentLockout": false,
   "maxFailureWaitSeconds": 900,
   "minimumQuickLoginWaitSeconds": 60,
   "waitIncrementSeconds": 60,
   "quickLoginCheckMilliSeconds": 1000,
-  "maxDeltaTimeSeconds": 43200,
-  "failureFactor": 30,
+  "maxDeltaTimeSeconds": 300,
+  "failureFactor": 5,
   "defaultRole": {
     "id": "pad-user",
     "name": "pad-user",
@@ -391,6 +391,33 @@
       "disableableCredentialTypes": [],
       "requiredActions": [],
       "realmRoles": [],
+      "clientRoles": {},
+      "notBefore": 0,
+      "groups": []
+    },
+    {
+      "id": "44444444-4444-4444-8444-444444444444",
+      "username": "brutetest",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Brute",
+      "lastName": "Test",
+      "email": "brutetest@pad.test",
+      "credentials": [
+        {
+          "id": "brutetest-cred",
+          "type": "password",
+          "userLabel": "test-only password",
+          "createdDate": 1704067200000,
+          "secretData": "{\"value\":\"DLXfdXMbgHAv3FgyuNQCsUdrqrU1n1zH8HEJT1EvkQl7sL/62h6KKZMyXjdB0PvEI7xMRtQcpz3MORae8eHnZg==\",\"salt\":\"MXa9RyEgBwJ9h/rMaTZieg==\",\"additionalParameters\":{}}",
+          "credentialData": "{\"hashIterations\":210000,\"algorithm\":\"pbkdf2-sha512\"}"
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "pad-user"
+      ],
       "clientRoles": {},
       "notBefore": 0,
       "groups": []
