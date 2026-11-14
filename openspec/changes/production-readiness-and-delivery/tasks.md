@@ -51,13 +51,13 @@
 
 ## 5. CI quality gates (CD deferred)
 
-- [ ] 5.1 Refactor `.github/workflows/ci.yml` into `config`, `unit`, `stack`, `e2e`, `quality` and `image` jobs with path filters, concurrency and caching. Verify a Caddy/compose change runs config/proxy/deploy checks.
-- [ ] 5.2 Make coverage and traceability required checks; verify a PR with missing coverage or a P0 UC fails.
-- [ ] 5.3 Build the Pad image on PR without pushing; publish digest-pinned images on release tags and write the release manifest. Verify the digest is recorded.
+- [x] 5.1 Refactor `.github/workflows/ci.yml` into `config`, `unit`, `stack`, `e2e`, `quality` and `image` jobs with path filters, concurrency and caching. Verify a Caddy/compose change runs config/proxy/deploy checks.
+- [x] 5.2 Make coverage and traceability required checks; verify a PR with missing coverage or a P0 UC fails.
+- [x] 5.3 Build the Pad image on PR without pushing; publish digest-pinned images on release tags and write the release manifest. Verify the digest is recorded.
 - [ ] 5.4 Configure branch protection required checks. Verify a failing lint, unit, coverage or traceability check blocks merge.
-- [ ] 5.5 Configure least-privilege CI permissions and registry secrets only; verify PR workflows have no push/deploy credentials and values are masked.
-- [ ] 5.6 Publish CI summaries and artifacts: test reports, coverage, image digest and traceability. Verify retention and links.
-- [ ] 5.7 Document that staging/production deployment and rollback are manual operator actions in this change and link the CD follow-up. Verify no `cd.yml` deploy workflow is required for acceptance.
+- [x] 5.5 Configure least-privilege CI permissions and registry secrets only; verify PR workflows have no push/deploy credentials and values are masked.
+- [x] 5.6 Publish CI summaries and artifacts: test reports, coverage, image digest and traceability. Verify retention and links.
+- [x] 5.7 Document that staging/production deployment and rollback are manual operator actions in this change and link the CD follow-up. Verify no `cd.yml` deploy workflow is required for acceptance.
 - [ ] 5.8 Run a PR with a deliberately failing lint, unit test, coverage threshold and traceability entry; verify each blocks merge.
 
 ## 6. Documentation
