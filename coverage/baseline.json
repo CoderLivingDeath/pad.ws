@@ -1,0 +1,25 @@
+{
+  "backend": {
+    "branches": 78.86,
+    "critical": {
+      "coder.py": 99.41,
+      "dependencies.py": 96.97,
+      "routers/auth_router.py": 89.01,
+      "routers/pad_router.py": 89.69,
+      "routers/ws_router.py": 86.49
+    },
+    "lines": 87.94
+  },
+  "frontend": {
+    "branches": 87.03,
+    "critical": {
+      "authRefreshManager.ts": 95.91,
+      "hooks/useCallbackRefState.ts": 100.0,
+      "hooks/useLogout.ts": 100.0,
+      "hooks/useWorkspace.ts": 94.28
+    },
+    "functions": 100.0,
+    "lines": 96.38,
+    "statements": 96.38
+  }
+}

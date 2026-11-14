@@ -385,7 +385,7 @@ class CoderAPI:
             now = datetime.now()
             deleting_at = datetime.strptime(workspace["deleting_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
             days_until_deleting = (deleting_at - now).days
-            if days_until_deleting < days_until_deleting:
+            if days_until_deleting < 0:
                 count += 1
                 print(f"[{count}] Deleting workspace {workspace['id']} from {workspace['owner_name']}, due deletion was in {days_until_deleting} days")
                 self.delete_workspace(workspace["id"])

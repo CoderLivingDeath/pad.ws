@@ -1,0 +1,40 @@
+# Backend coverage configuration for pad.ws
+# Run with: pytest --cov --cov-config=.coveragerc tests/unit
+[run]
+source = src/backend
+branch = True
+# Exclude generated, vendor and test-only code. Each exclusion is documented.
+omit =
+    # Auto-generated Alembic/SQLAlchemy migrations; schema changes are reviewed separately.
+    src/backend/database/migrations/*
+    # Test-only entrypoint and local development server.
+    src/backend/main.py
+    # Caching abstraction is exercised through integration tests; unit tests stub it.
+    src/backend/cache/*
+    # Database models are thin SQLAlchemy wrappers covered by integration tests.
+    src/backend/database/models/*
+    # Asyncpg/SQLAlchemy plumbing covered by integration tests.
+    src/backend/database/database.py
+    # Background worker orchestration is covered by integration/E2E tests.
+    src/backend/workers/*
+    # Domain user/pad persistence is covered by integration tests.
+    src/backend/domain/user.py
+    src/backend/domain/pad.py
+
+[report]
+# Show missing lines so authors know what to cover.
+show_missing = True
+skip_covered = False
+precision = 2
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+
+[html]
+directory = coverage/backend/html
+
+[xml]
+output = coverage/backend/coverage.xml
