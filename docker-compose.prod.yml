@@ -88,7 +88,8 @@ services:
       CODER_WORKSPACE_NAME: ${CODER_WORKSPACE_NAME:-ubuntu}
       API_WORKERS: ${API_WORKERS:-1}
     networks:
-      - edge
+      edge:
+        ipv4_address: 172.28.0.6
     mem_limit: 512m
     cpus: "1.0"
     pids_limit: 200
@@ -128,7 +129,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
     networks:
-      - edge
+      edge:
+        ipv4_address: 172.28.0.3
     mem_limit: 1g
     cpus: "1.0"
     pids_limit: 200
@@ -158,7 +160,8 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - edge
+      edge:
+        ipv4_address: 172.28.0.4
     mem_limit: 256m
     cpus: "0.5"
     pids_limit: 100
@@ -200,7 +203,8 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_HEALTH_ENABLED: "true"
     networks:
-      - edge
+      edge:
+        ipv4_address: 172.28.0.5
     mem_limit: 1g
     cpus: "1.0"
     pids_limit: 200
@@ -245,7 +249,8 @@ services:
     group_add:
       - ${DOCKER_GROUP_ID}
     networks:
-      - edge
+      edge:
+        ipv4_address: 172.28.0.7
     mem_limit: 1g
     cpus: "1.0"
     pids_limit: 200

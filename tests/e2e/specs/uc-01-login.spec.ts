@@ -77,10 +77,12 @@ test.describe('UC-01 first login and return path', () => {
     const unprovisioned = getUnprovisionedCredentials();
     let callbackStatus: number | null = null;
 
-    await page.route('/api/auth/callback*', async (route) => {
-      const response = await route.fetch();
-      callbackStatus = response.status();
-      await route.fulfill({ response });
+    // The callback redirect crosses hosts (auth.* -> pad.*), so observe
+    // responses instead of installing a same-origin route.
+    page.on('response', (response) => {
+      if (response.url().includes('/api/auth/callback')) {
+        callbackStatus = response.status();
+      }
     });
 
     await page.goto('/api/auth/login?rd=/');

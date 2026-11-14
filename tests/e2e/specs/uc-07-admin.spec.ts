@@ -70,7 +70,7 @@ PAD_IMAGE=ghcr.io/pad-ws/pad.ws:main@sha256:000000000000000000000000000000000000
 function runDeployDryRun(envPath: string, statePath: string, allowlist: string): { ok: boolean; output: string } {
   try {
     const output = execSync(
-      `bash scripts/deploy.sh up --profile production --domain example.com --allowlist "${allowlist}" --dry-run`,
+      `bash scripts/deploy.sh up --profile production --domain example.com --allowlist "${allowlist}" --set ACME_EMAIL=ops@example.com --dry-run`,
       {
         cwd: REPO_ROOT,
         env: { ...process.env, ENV_FILE: envPath, STATE_DIR: statePath },

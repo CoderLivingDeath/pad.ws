@@ -85,12 +85,12 @@
 	# Public Pad logout helper: clears every documented Coder cookie without a
 	# Pad session. This must not proxy to Coder.
 	handle /__pad/logout {
-		header Set-Cookie "coder_session_token=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
-		header Set-Cookie "coder_oauth_state=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
-		header Set-Cookie "oauth_state=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
-		header Set-Cookie "oauth_redirect=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
-		header Set-Cookie "oauth_pkce_verifier=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
-		header Set-Cookie "csrf_token=; Path=/; Max-Age=0; Secure; SameSite=Lax"
+		header +Set-Cookie "coder_session_token=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
+		header +Set-Cookie "coder_oauth_state=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
+		header +Set-Cookie "oauth_state=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
+		header +Set-Cookie "oauth_redirect=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
+		header +Set-Cookie "oauth_pkce_verifier=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
+		header +Set-Cookie "csrf_token=; Path=/; Max-Age=0; Secure; SameSite=Lax"
 		respond 204
 	}
 

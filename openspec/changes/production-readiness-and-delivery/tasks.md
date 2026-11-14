@@ -7,16 +7,16 @@
 - [x] 1.1 Add `deploy/preflight.sh` with a compose-wide required-variable check and a production guard that rejects empty, malformed or `0.0.0.0/0 ::/0` `ADMIN_ALLOWLIST`. Verify production startup fails before any container starts; local remains allowed.
 - [ ] 1.2 Add `CODER_API_KEY_CREATED_AT` and `scripts/rotate-coder-key.sh` using a Coder owner session/API key. Verify rotation updates `.env`, restarts Pad, revokes the old key and keeps `/api/workspace/state` at 200.
 - [x] 1.3 Extend `scripts/status.sh` with Coder key age (warn at six days), certificate expiry, last backup age and container health. Verify each condition produces a visible failure/exit code.
-- [ ] 1.4 Clear every documented Coder cookie in the `/__pad/logout` Caddy route (`coder_session_token`, `coder_oauth_state`, `oauth_state`, `oauth_redirect`, `oauth_pkce_verifier`, `csrf_token`). Verify a second user on the same browser does not inherit the first Coder session.
+- [x] 1.4 Clear every documented Coder cookie in the `/__pad/logout` Caddy route (`coder_session_token`, `coder_oauth_state`, `oauth_state`, `oauth_redirect`, `oauth_pkce_verifier`, `csrf_token`). Verify a second user on the same browser does not inherit the first Coder session.
 - [x] 1.5 Pin Caddy, Pad, PostgreSQL, Redis, Keycloak and Coder images by digest through `${*_IMAGE}` variables and write `deploy/releases/<version>.json`. Verify rollback can start every service from the recorded digest set.
 - [x] 1.6 Add `scripts/restore-postgres.sh` for all three databases with an integrity check (`pg_restore --list`) and a staging drill into a fresh volume. Verify users, pads, realm and Coder state are restored.
 - [x] 1.7 Add backup retention and integrity verification (`BACKUP_RETENTION_DAYS`, `pg_restore --list`). Verify old dumps are pruned and a corrupt dump fails the check. Offsite copy and encryption are follow-up risks R-01/R-02, not part of this change.
 - [ ] 1.8 Move Caddy to a dedicated `edge` network with a static address and set `TRUSTED_PROXY_IPS` to that address. Verify a direct request with a forged `X-Forwarded-Proto` is not treated as HTTPS.
 - [x] 1.9 Add a FastAPI route-inventory test that classifies every route as public or protected. Verify a new sensitive route without `require_auth` fails the test.
-- [ ] 1.10 Add a log-hygiene test that performs login, callback and logout and inspects Caddy/Pad/Keycloak/Coder logs for cookies, authorization headers, codes, state and Coder keys. Verify no secret is present.
+- [x] 1.10 Add a log-hygiene test that performs login, callback and logout and inspects Caddy/Pad/Keycloak/Coder logs for cookies, authorization headers, codes, state and Coder keys. Verify no secret is present.
 - [ ] 1.11 Fix `scripts/smoke-test.sh` HTML-entity decoding (`&amp;`), the `coder.py` shadowed variable and the flaky E2E return-path selector. Verify smoke and E2E pass repeatedly.
-- [ ] 1.12 Reduce WebSocket revalidation to at most 30 seconds and close the socket immediately when the session is revoked. Verify logout closes an open socket.
-- [ ] 1.13 Enable Keycloak brute-force protection in the realm export/bootstrap and verify failed login attempts trigger lockout. Record the limits in the risk register.
+- [x] 1.12 Reduce WebSocket revalidation to at most 30 seconds and close the socket immediately when the session is revoked. Verify logout closes an open socket.
+- [x] 1.13 Enable Keycloak brute-force protection in the realm export/bootstrap and verify failed login attempts trigger lockout. Record the limits in the risk register.
 
 ## 2. One-command deployment
 

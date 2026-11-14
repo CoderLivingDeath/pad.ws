@@ -11,6 +11,9 @@ REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', None)
 REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
 REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
+# Each collaboration socket holds one blocking stream read and one pub/sub
+# connection, so the pool must scale with concurrent editors.
+REDIS_MAX_CONNECTIONS = int(os.getenv('REDIS_MAX_CONNECTIONS', '100'))
 
 class RedisClient:
     """Service for managing Redis connections with proper lifecycle management."""
@@ -41,12 +44,12 @@ class RedisClient:
                     password=REDIS_PASSWORD,
                     decode_responses=True,
                     health_check_interval=30,
-                    max_connections=20,  # Limit connection pool size
+                    max_connections=REDIS_MAX_CONNECTIONS,
                     retry_on_timeout=True,
                     socket_keepalive=True,
                     socket_keepalive_options={}
                 )
-                print(f"Redis client initialized with connection pool (max 20 connections)")
+                print(f"Redis client initialized with connection pool (max {REDIS_MAX_CONNECTIONS} connections)")
                 
                 # Test the connection
                 await RedisClient._client.ping()

@@ -216,7 +216,13 @@ PY
                    CADDY_IMAGE POSTGRES_IMAGE REDIS_IMAGE KEYCLOAK_IMAGE CODER_IMAGE PAD_IMAGE; do
             value="${!key:-}"
             if [[ -n "$value" ]]; then
-                echo "${key}=${value}"
+                # Quote values with spaces so both shell parsers and
+                # ``docker compose --env-file`` read them as one value.
+                if [[ "$value" == *" "* ]]; then
+                    echo "${key}=\"${value}\""
+                else
+                    echo "${key}=${value}"
+                fi
             else
                 echo "# ${key}="
             fi

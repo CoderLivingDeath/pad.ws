@@ -88,11 +88,13 @@ def test_pad_api_star_unauthenticated_is_401(client: httpx.Client) -> None:
 
 def test_static_asset_is_public(client: httpx.Client) -> None:
     require_stack(client)
-    for path in ("/favicon.ico", "/assets/"):
+    # ``/static`` is served from the Pad image and is intentionally public so
+    # that login/popup subresources load without a session.
+    for path in ("/static/auth/popup-close.html", "/favicon.ico"):
         resp = client.get(stack_url(path, PAD_BASE_URL))
-        if resp.status_code == 200:
-            return
-    pytest.skip("No public static asset returned 200 (frontend build may be missing)")
+        assert resp.status_code == 200, f"{path} must be public, got {resp.status_code}"
+        return
+    pytest.fail("no public static asset is served")
 
 
 # ---------------------------------------------------------------------------

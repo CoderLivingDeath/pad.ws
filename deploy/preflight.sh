@@ -18,11 +18,21 @@ if [[ ! -f "$ENV_FILE" ]]; then
     exit 1
 fi
 
-# Load the env file without executing arbitrary code.
-set -a
-# shellcheck source=/dev/null
-source "$ENV_FILE"
-set +a
+# Load the env file without executing arbitrary code. Values may contain spaces
+# (for example ``ADMIN_ALLOWLIST=0.0.0.0/0 ::/0``), so they are parsed instead of
+# sourced.
+while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" != *=* ]] && continue
+    key="${line%%=*}"
+    value="${line#*=}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+        value="${value:1:${#value}-2}"
+    fi
+    printf -v "$key" '%s' "$value"
+done < "$ENV_FILE"
 
 PROFILE="${PROFILE:-}"
 

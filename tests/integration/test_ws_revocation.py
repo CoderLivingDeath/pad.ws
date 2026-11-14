@@ -26,6 +26,7 @@ async def test_logout_closes_open_websocket(
     new_resp = await http_client.post(
         f"{BASE_URL}/api/pad/new",
         cookies={"session_id": session_id},
+        headers={"Origin": FRONTEND_URL},
         follow_redirects=False,
     )
     assert new_resp.status_code == 200, f"Failed to create pad: {new_resp.text[:200]}"
@@ -34,7 +35,7 @@ async def test_logout_closes_open_websocket(
     ws_url = f"ws://pad:8000/ws/pad/{pad_id}"
     async with websockets.connect(
         ws_url,
-        extra_headers={
+        additional_headers={
             "Cookie": f"session_id={session_id}",
             "Origin": FRONTEND_URL,
         },

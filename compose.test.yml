@@ -9,6 +9,11 @@ services:
       dockerfile: Dockerfile
     image: pad-ws:test
     container_name: pad
+    # Acceptance runs against the working tree, not a stale image layer.
+    volumes:
+      - ./src/backend:/app
+      - ./scripts/startup.sh:/app/startup.sh:ro
+      - ./src/frontend/dist:/app/frontend/dist
 
   caddy:
     volumes:

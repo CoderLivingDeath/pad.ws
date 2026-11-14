@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { keycloakLogin, createPadViaApi, setPadSharingPolicy } from './helpers';
+import { keycloakLogin, createPadViaApi, setPadSharingPolicy, apiHeaders } from './helpers';
 
 test.describe('UC-02 pad create, edit, switch and persist', () => {
   test.beforeEach(async ({ page }) => {
@@ -97,7 +97,7 @@ test.describe('UC-02 pad create, edit, switch and persist', () => {
     };
 
     const putResponse = await page.request.put(`/api/pad/${firstPadId}/data`, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
       data: { elements: [seedElement], files: {} },
     });
     expect(putResponse.ok(), `seed update failed: ${putResponse.status()}`).toBeTruthy();
@@ -142,7 +142,9 @@ test.describe('UC-02 pad create, edit, switch and persist', () => {
   });
 
   test('returns 404 for a missing pad', async ({ page }) => {
-    const response = await page.request.get('/pad/00000000-0000-0000-0000-000000000000');
+    const response = await page.request.get('/api/pad/00000000-0000-0000-0000-000000000000', {
+      headers: { Accept: 'application/json' },
+    });
     expect(response.status()).toBe(404);
   });
 });

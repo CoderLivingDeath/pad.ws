@@ -131,8 +131,13 @@ def check() -> list[str]:
         for path in missing:
             errors.append(f"{uc}: evidence path does not exist: {path.relative_to(ROOT)}")
         for path in paths:
-            if path.exists() and is_skipped_spec(path):
-                errors.append(f"{uc}: {path.relative_to(ROOT)} contains a skipped test")
+            if not path.exists() or not is_skipped_spec(path):
+                continue
+            # A documented staging gate may skip on hosts without the
+            # prerequisite; an undocumented skip still fails the check.
+            if "staging gate" in status:
+                continue
+            errors.append(f"{uc}: {path.relative_to(ROOT)} contains a skipped test")
 
     return errors
 
