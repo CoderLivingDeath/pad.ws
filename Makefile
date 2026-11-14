@@ -1,5 +1,6 @@
 .PHONY: test-unit test-integration test-proxy test-e2e test-security test-deploy test-all test-env \
-  deploy status logs backup restore rollback
+  deploy status logs backup restore rollback \
+  test-coverage check-traceability
 
 test-unit:
 	@pytest tests/unit -v || { echo "Unit tests not yet implemented or pytest unavailable"; exit 1; }
@@ -46,3 +47,9 @@ restore:
 
 rollback:
 	@bash scripts/deploy.sh rollback
+
+test-coverage:
+	@bash scripts/run-coverage.sh
+
+check-traceability:
+	@python3 scripts/check-traceability.py

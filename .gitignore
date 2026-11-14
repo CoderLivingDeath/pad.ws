@@ -15,3 +15,6 @@ backups/
 .deploy-state/
 tests/e2e/test-results/
 tests/e2e/playwright-report/
+.coverage
+coverage/*
+!coverage/baseline.json
