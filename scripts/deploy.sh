@@ -19,8 +19,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.prod.yml"
 COMPOSE_TEST_FILE="$ROOT_DIR/compose.test.yml"
 PREFLIGHT_SCRIPT="$ROOT_DIR/deploy/preflight.sh"
-RELEASES_DIR="$ROOT_DIR/deploy/releases"
-STATE_DIR="$ROOT_DIR/.deploy-state"
+RELEASES_DIR="${RELEASES_DIR:-$ROOT_DIR/deploy/releases}"
+STATE_DIR="${STATE_DIR:-$ROOT_DIR/.deploy-state}"
 
 cd "$ROOT_DIR"
 
@@ -29,7 +29,7 @@ cd "$ROOT_DIR"
 # ---------------------------------------------------------------------------
 PROFILE="${PROFILE:-local}"
 PROFILE_SOURCE="${PROFILE_SOURCE:-default}"
-ENV_FILE="$ROOT_DIR/.env"
+ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 RESOLVED_ENV=""
 CLI_OVERRIDES=()
 DRY_RUN="${DRY_RUN:-false}"
@@ -230,8 +230,13 @@ PY
         "$PREFLIGHT_SCRIPT" "$RESOLVED_ENV"
     fi
 
-    # Persist the resolved config as .env for docker compose and other scripts.
-    cp "$RESOLVED_ENV" "$ENV_FILE"
+    # Persist the resolved config as .env for docker compose and other scripts,
+    # merging with the existing file so operator-supplied unknown keys survive.
+    if [[ -f "$ENV_FILE" ]]; then
+        merge_env_file "$ENV_FILE" "$RESOLVED_ENV"
+    else
+        cp "$RESOLVED_ENV" "$ENV_FILE"
+    fi
     chmod 600 "$ENV_FILE"
 
     # Validate with docker compose config.
@@ -334,7 +339,193 @@ with open(sys.argv[1]) as f:
 for k, v in data.get('images', {}).items():
     print(f"{k}={v}")
 PY
-    load_env_file "$STATE_DIR/release.env"
+    # During upgrade/rollback the manifest explicitly chosen by the operator
+    # must win, so force-set the image variables regardless of env precedence.
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        local key="${line%%=*}" value="${line#*=}"
+        printf -v "$key" '%s' "$value"
+    done < "$STATE_DIR/release.env"
+}
+
+# Merge source env file into target env file. Existing keys are updated,
+# missing keys are appended, and unknown keys/comments are preserved.
+merge_env_file() {
+    local target="$1"
+    local source="$2"
+    python3 - "$target" "$source" <<'PY'
+import sys
+target = sys.argv[1]
+source = sys.argv[2]
+
+updates = {}
+with open(source) as f:
+    for line in f:
+        line = line.rstrip('\n')
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        updates[key] = value
+
+with open(target) as f:
+    lines = f.readlines()
+
+seen = set()
+with open(target, 'w') as f:
+    for line in lines:
+        original = line.rstrip('\n')
+        if not original or original.startswith('#') or '=' not in original:
+            f.write(original + '\n')
+            continue
+        key = original.split('=', 1)[0]
+        if key in updates:
+            f.write(f"{key}={updates[key]}\n")
+            seen.add(key)
+        else:
+            f.write(original + '\n')
+    for key, value in updates.items():
+        if key not in seen:
+            f.write(f"{key}={value}\n")
+PY
+    chmod 600 "$target"
+}
+
+# Update specific KEY=VALUE pairs in an env file, preserving other lines.
+update_env_values() {
+    local env_file="$1"
+    shift
+    python3 - "$env_file" "$@" <<'PY'
+import sys
+env_file = sys.argv[1]
+updates = {}
+for arg in sys.argv[2:]:
+    if '=' in arg:
+        key, value = arg.split('=', 1)
+        updates[key] = value
+
+with open(env_file) as f:
+    lines = f.readlines()
+
+seen = set()
+with open(env_file, 'w') as f:
+    for line in lines:
+        original = line.rstrip('\n')
+        if not original or original.startswith('#') or '=' not in original:
+            f.write(original + '\n')
+            continue
+        key = original.split('=', 1)[0]
+        if key in updates:
+            f.write(f"{key}={updates[key]}\n")
+            seen.add(key)
+        else:
+            f.write(original + '\n')
+    for key, value in updates.items():
+        if key not in seen:
+            f.write(f"{key}={value}\n")
+PY
+    chmod 600 "$env_file"
+}
+
+# Apply image digests from a release manifest to $ENV_FILE and verify that
+# docker compose config resolves them.
+apply_release_images() {
+    local manifest="$1"
+    load_release_images "$manifest"
+
+    local image_vars=()
+    for var in CADDY_IMAGE POSTGRES_IMAGE REDIS_IMAGE KEYCLOAK_IMAGE CODER_IMAGE; do
+        image_vars+=("${var}=${!var}")
+    done
+    update_env_values "$ENV_FILE" "${image_vars[@]}"
+
+    echo "Verifying image digests against manifest..."
+    if ! assert_release_images "$manifest"; then
+        echo "ERROR: image digest verification failed" >&2
+        exit 1
+    fi
+}
+
+# Assert that the resolved compose images match the manifest digests.
+assert_release_images() {
+    local manifest="$1"
+    python3 - "$manifest" "$(compose_cmd) config" <<'PY'
+import sys, json, subprocess, yaml
+manifest_path = sys.argv[1]
+compose_cmd = sys.argv[2]
+
+with open(manifest_path) as f:
+    manifest = json.load(f)
+expected = manifest.get('images', {})
+
+config = subprocess.check_output(compose_cmd, shell=True, text=True)
+data = yaml.safe_load(config)
+services = data.get('services', {})
+
+failures = []
+for var, image in expected.items():
+    service = var.replace('_IMAGE', '').lower()
+    actual = services.get(service, {}).get('image', '')
+    if actual != image:
+        failures.append(f"{service}: expected {image}, got {actual}")
+
+if failures:
+    print("Image digest mismatch:", file=sys.stderr)
+    for f in failures:
+        print(f"  - {f}", file=sys.stderr)
+    sys.exit(1)
+print("Image digests verified against manifest.")
+PY
+}
+
+# Record the most recent backup dumps in state.
+record_last_backup() {
+    local backup_dir="${BACKUP_DIR:-$ROOT_DIR/backups}"
+    python3 - "$backup_dir" "$STATE_DIR/last-backup.json" <<'PY'
+import sys, os, json, glob
+backup_dir = sys.argv[1]
+out = sys.argv[2]
+
+dumps = {}
+for db in ('pad', 'keycloak', 'coder'):
+    files = glob.glob(os.path.join(backup_dir, f"{db}_*.dump.gz"))
+    if files:
+        latest = max(files, key=os.path.getmtime)
+        dumps[db] = os.path.basename(latest)
+
+with open(out, 'w') as f:
+    json.dump({'directory': backup_dir, 'dumps': dumps}, f, indent=2)
+PY
+
+    # If a previous-release state exists, attach this backup to it.
+    if [[ -f "$STATE_DIR/previous.json" ]]; then
+        python3 - "$STATE_DIR/previous.json" "$STATE_DIR/last-backup.json" "$STATE_DIR/previous.json" <<'PY'
+import sys, json
+prev_path = sys.argv[1]
+backup_path = sys.argv[2]
+out_path = sys.argv[3]
+
+with open(prev_path) as f:
+    state = json.load(f)
+with open(backup_path) as f:
+    state['backup'] = json.load(f)
+
+with open(out_path, 'w') as f:
+    json.dump(state, f, indent=2)
+PY
+    fi
+}
+
+# Print the three database dump paths recorded for rollback.
+get_previous_backup_paths() {
+    python3 - "$STATE_DIR/previous.json" <<'PY'
+import sys, json, os
+with open(sys.argv[1]) as f:
+    d = json.load(f)
+backup = d.get('backup', {})
+directory = backup.get('directory', '')
+for db in ('pad', 'keycloak', 'coder'):
+    print(os.path.join(directory, backup.get('dumps', {}).get(db, '')))
+PY
 }
 
 # ---------------------------------------------------------------------------
@@ -437,6 +628,7 @@ cmd_logs() {
 cmd_backup() {
     require_env
     ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" bash "$ROOT_DIR/scripts/backup-postgres.sh"
+    record_last_backup
 }
 
 cmd_restore() {
@@ -467,7 +659,7 @@ cmd_upgrade() {
         echo "ERROR: release manifest not found: $manifest" >&2
         exit 1
     fi
-    load_release_images "$manifest"
+    apply_release_images "$manifest"
     record_release "$version"
 
     echo "Recreating services with new images..."
@@ -487,10 +679,18 @@ cmd_rollback() {
     resolve_config
 
     echo "Restoring previous release image digests..."
-    load_release_images "$STATE_DIR/previous.json"
+    apply_release_images "$STATE_DIR/previous.json"
 
-    echo "Restoring latest database backup..."
-    cmd_restore
+    echo "Restoring database backup from previous release..."
+    local backup_paths=()
+    while IFS= read -r path; do
+        backup_paths+=("$path")
+    done < <(get_previous_backup_paths)
+    if [[ ${#backup_paths[@]} -ne 3 ]]; then
+        echo "ERROR: could not determine previous backup paths" >&2
+        exit 1
+    fi
+    cmd_restore "${backup_paths[@]}"
 
     echo "Recreating services with previous images..."
     compose up -d --force-recreate
@@ -502,113 +702,115 @@ cmd_rollback() {
 }
 
 # ---------------------------------------------------------------------------
-# Parse command and options.
+# Main entry point (skip when sourced by tests).
 # ---------------------------------------------------------------------------
-if [[ $# -lt 1 ]]; then
-    usage
-fi
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    if [[ $# -lt 1 ]]; then
+        usage
+    fi
 
-COMMAND="$1"
-shift
+    COMMAND="$1"
+    shift
 
-# Global options can appear before or after command; parse only the ones we know.
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --profile)
-            PROFILE="$2"
-            PROFILE_SOURCE=cli
-            shift 2
+    # Global options can appear before or after command; parse only the ones we know.
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --profile)
+                PROFILE="$2"
+                PROFILE_SOURCE=cli
+                shift 2
+                ;;
+            --profile=*)
+                PROFILE="${1#*=}"
+                PROFILE_SOURCE=cli
+                shift
+                ;;
+            --set)
+                CLI_OVERRIDES+=("$2")
+                shift 2
+                ;;
+            --set=*)
+                CLI_OVERRIDES+=("${1#*=}")
+                shift
+                ;;
+            --domain)
+                local_domain="$2"
+                CLI_OVERRIDES+=("PAD_DOMAIN=pad.${local_domain}")
+                CLI_OVERRIDES+=("AUTH_DOMAIN=auth.${local_domain}")
+                CLI_OVERRIDES+=("CODER_DOMAIN=coder.${local_domain}")
+                CLI_OVERRIDES+=("COOKIE_DOMAIN=.${local_domain}")
+                CLI_OVERRIDES+=("OIDC_SERVER_URL=https://auth.${local_domain}")
+                CLI_OVERRIDES+=("REDIRECT_URI=https://pad.${local_domain}/api/auth/callback")
+                CLI_OVERRIDES+=("FRONTEND_URL=https://pad.${local_domain}")
+                CLI_OVERRIDES+=("CODER_URL=https://coder.${local_domain}")
+                shift 2
+                ;;
+            --allowlist)
+                CLI_OVERRIDES+=("ADMIN_ALLOWLIST=$2")
+                shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            -h|--help)
+                usage 0
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    # Use a stable state directory.
+    mkdir -p "$STATE_DIR"
+
+    # If no profile was passed on the CLI, use the one recorded in .env so that
+    # subcommands like status/logs/backup work without re-specifying it.
+    if [[ "$PROFILE_SOURCE" != "cli" ]] && [[ -f "$ENV_FILE" ]]; then
+        saved_profile="$(grep -E '^PROFILE=' "$ENV_FILE" | cut -d= -f2- || true)"
+        if [[ -n "$saved_profile" ]]; then
+            PROFILE="$saved_profile"
+        fi
+    fi
+
+    case "$COMMAND" in
+        up)
+            cmd_up
             ;;
-        --profile=*)
-            PROFILE="${1#*=}"
-            PROFILE_SOURCE=cli
-            shift
+        down)
+            cmd_down "$@"
             ;;
-        --set)
-            CLI_OVERRIDES+=("$2")
-            shift 2
+        destroy)
+            cmd_destroy "$@"
             ;;
-        --set=*)
-            CLI_OVERRIDES+=("${1#*=}")
-            shift
+        status)
+            cmd_status
             ;;
-        --domain)
-            local_domain="$2"
-            CLI_OVERRIDES+=("PAD_DOMAIN=pad.${local_domain}")
-            CLI_OVERRIDES+=("AUTH_DOMAIN=auth.${local_domain}")
-            CLI_OVERRIDES+=("CODER_DOMAIN=coder.${local_domain}")
-            CLI_OVERRIDES+=("COOKIE_DOMAIN=.${local_domain}")
-            CLI_OVERRIDES+=("OIDC_SERVER_URL=https://auth.${local_domain}")
-            CLI_OVERRIDES+=("REDIRECT_URI=https://pad.${local_domain}/api/auth/callback")
-            CLI_OVERRIDES+=("FRONTEND_URL=https://pad.${local_domain}")
-            CLI_OVERRIDES+=("CODER_URL=https://coder.${local_domain}")
-            shift 2
+        logs)
+            cmd_logs "$@"
             ;;
-        --allowlist)
-            CLI_OVERRIDES+=("ADMIN_ALLOWLIST=$2")
-            shift 2
+        backup)
+            cmd_backup
             ;;
-        --dry-run)
-            DRY_RUN=true
-            shift
+        restore)
+            cmd_restore "$@"
             ;;
-        -h|--help)
+        rotate-key)
+            cmd_rotate_key
+            ;;
+        upgrade)
+            cmd_upgrade "$@"
+            ;;
+        rollback)
+            cmd_rollback
+            ;;
+        -h|--help|help)
             usage 0
             ;;
         *)
-            break
+            echo "Unknown command: $COMMAND" >&2
+            usage
             ;;
     esac
-done
-
-# Use a stable state directory.
-mkdir -p "$STATE_DIR"
-
-# If no profile was passed on the CLI, use the one recorded in .env so that
-# subcommands like status/logs/backup work without re-specifying it.
-if [[ "$PROFILE_SOURCE" != "cli" ]] && [[ -f "$ENV_FILE" ]]; then
-    saved_profile="$(grep -E '^PROFILE=' "$ENV_FILE" | cut -d= -f2- || true)"
-    if [[ -n "$saved_profile" ]]; then
-        PROFILE="$saved_profile"
-    fi
 fi
-
-case "$COMMAND" in
-    up)
-        cmd_up
-        ;;
-    down)
-        cmd_down "$@"
-        ;;
-    destroy)
-        cmd_destroy "$@"
-        ;;
-    status)
-        cmd_status
-        ;;
-    logs)
-        cmd_logs "$@"
-        ;;
-    backup)
-        cmd_backup
-        ;;
-    restore)
-        cmd_restore "$@"
-        ;;
-    rotate-key)
-        cmd_rotate_key
-        ;;
-    upgrade)
-        cmd_upgrade "$@"
-        ;;
-    rollback)
-        cmd_rollback
-        ;;
-    -h|--help|help)
-        usage 0
-        ;;
-    *)
-        echo "Unknown command: $COMMAND" >&2
-        usage
-        ;;
-esac
