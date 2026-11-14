@@ -1,39 +1,63 @@
 # Deployment files
 
-This directory contains the Caddy gateway configuration and database bootstrap used by `docker-compose.prod.yml`.
+This directory contains the Caddy gateway configuration, database bootstrap, deployment profiles and release manifests used by `scripts/deploy.sh` and `docker-compose.prod.yml`.
 
 ## Files
 
 - `Caddyfile` — production gateway. Uses ACME (Let's Encrypt/ZeroSSL) with `{$ACME_EMAIL}`.
 - `Caddyfile.local` — local acceptance gateway. Uses Caddy's internal CA for `*.pad.test`.
 - `postgres/init/01-databases.sql` — creates the `pad`, `keycloak` and `coder` databases on first PostgreSQL startup.
+- `profiles/{local,staging,production}.env` — environment-specific defaults for `scripts/deploy.sh`.
+- `releases/<version>.json` — digest-pinned image set for a release.
+- `preflight.sh` — compose-wide required-variable and production-guard check.
+
+## Quick start
+
+Use `scripts/deploy.sh` for one-command deployment:
+
+```bash
+# Local *.pad.test acceptance mode
+make deploy PROFILE=local
+
+# Production (operator must provide domain and allowlist)
+make deploy PROFILE=production DOMAIN=example.com ALLOWLIST="203.0.113.0/24"
+```
+
+See `docs/deployment.md` for the full runbook.
+
+## Configuration precedence
+
+Resolved configuration follows this order (highest first):
+
+1. CLI flags (`--set KEY=VALUE`, `--domain`, `--allowlist`)
+2. Process environment variables
+3. `deploy/profiles/<PROFILE>.env`
+4. `.env` in the project root
+5. Release manifest defaults (`deploy/releases/<version>.json` for image digests)
+
+Run a dry-run to validate configuration without starting containers:
+
+```bash
+scripts/deploy.sh up --profile production --domain example.com --allowlist "203.0.113.0/24" --dry-run
+```
 
 ## Local acceptance profile (`*.pad.test`)
 
-The local profile lets you run the full production topology without public DNS or ACME certificates.
+The local profile runs the full production topology on `*.pad.test` using Caddy's internal CA. No public DNS or ACME account is required.
 
-1. Copy `.env.local.template` to `.env` and fill in the generated secrets:
-
-   ```bash
-   cp .env.local.template .env
-   chmod 600 .env
-   ```
-
-2. Add the three local domains to `/etc/hosts` (or your resolver):
+1. Add the three local domains to `/etc/hosts`:
 
    ```text
    127.0.0.1 pad.pad.test auth.pad.test coder.pad.test
    ```
 
-3. Start the stack:
+2. Deploy:
 
    ```bash
-   docker compose -f docker-compose.prod.yml --env-file .env up -d
+   make deploy PROFILE=local
    ```
 
-   The profile selects the local Caddyfile via `CADDYFILE=deploy/Caddyfile.local`.
-
-4. Trust Caddy's local CA so HTTPS requests succeed without `-k`:
+3. Trust Caddy's local CA so HTTPS requests succeed without `-k`:
 
    ```bash
    docker cp caddy:/data/caddy/pki/authorities/local/root.crt /tmp/caddy-root.crt
@@ -43,7 +67,7 @@ The local profile lets you run the full production topology without public DNS o
 
    On macOS, add the exported certificate to Keychain Access and trust it.
 
-5. Verify the gateway responds on HTTPS:
+4. Verify the gateway:
 
    ```bash
    curl -i https://pad.pad.test
@@ -53,13 +77,28 @@ The local profile lets you run the full production topology without public DNS o
 
 ## Production profile
 
-1. Copy `.env.prod.template` to `.env`, fill every `__CHANGE_ME__` value, and set `chmod 600 .env`.
-2. Create DNS A records for `PAD_DOMAIN`, `AUTH_DOMAIN` and `CODER_DOMAIN` pointing to the host.
-3. Open TCP 80 and 443 (and UDP 443 for HTTP/3) in the host firewall.
-4. Start the stack:
+1. Create DNS A records for `PAD_DOMAIN`, `AUTH_DOMAIN` and `CODER_DOMAIN` pointing to the host.
+2. Open TCP 80 and 443 (and UDP 443 for HTTP/3) in the host firewall.
+3. Deploy with an explicit admin allowlist:
 
    ```bash
-   docker compose -f docker-compose.prod.yml up -d
+   make deploy PROFILE=production DOMAIN=example.com ALLOWLIST="203.0.113.0/24"
    ```
 
-5. Verify health, certificate issuance and the route matrix before cutting over traffic.
+4. Verify health, certificate issuance and the route matrix before cutting over traffic.
+
+## Operator commands
+
+| Command | Purpose |
+| --- | --- |
+| `make status` | Service health, certificate, backup and Coder key age. |
+| `make logs` | Service logs. |
+| `make backup` | Back up PostgreSQL databases with integrity checks. |
+| `make restore` | Restore databases from the latest dumps. |
+| `make rollback` | Roll back to the previous release manifest and backup. |
+| `scripts/deploy.sh rotate-key` | Rotate the Coder API key. |
+| `scripts/deploy.sh destroy --yes-i-want-to-destroy-data` | Delete the stack and all volumes. |
+
+## Image pinning and rollback
+
+Every production image is referenced by a digest through `${*_IMAGE}` variables. The digest set for each release is recorded in `deploy/releases/<version>.json`. The `upgrade` and `rollback` commands use these manifests to move between reproducible image sets.
