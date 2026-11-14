@@ -1,0 +1,12 @@
+{
+  "version": "0.1.0",
+  "date": "2026-11-14",
+  "images": {
+    "CADDY_IMAGE": "caddy:2-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0",
+    "POSTGRES_IMAGE": "postgres:16@sha256:63e83b5a3dc36a917dccb76fe1bd2ac51f1ec9c1deb47ff20d4f04233bf6eae9",
+    "REDIS_IMAGE": "redis:7.2-alpine@sha256:a2c8f9d7c49c74ebd2945e3798c71606545c5f0d90d03e9ec4a2bb8d4f56df36",
+    "KEYCLOAK_IMAGE": "quay.io/keycloak/keycloak:25.0@sha256:82c5b7a110456dbd42b86ea572e728878549954cc8bd03cd65410d75328095d2",
+    "CODER_IMAGE": "ghcr.io/coder/coder:latest@sha256:77500de63a62f733bb1fbbf79da85e8ad4d6ca582e964f5d6021f46f6dc7fc29"
+  },
+  "notes": "Pad image is built from the working tree in local mode and must be supplied by the operator in staging/production."
+}
