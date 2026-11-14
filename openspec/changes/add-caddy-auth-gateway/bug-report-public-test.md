@@ -199,3 +199,36 @@
 - Тестовые пароли и API key лежат в `/home/agent/pad-public-test/credentials.txt` и `.env` (mode 600).
 - Backup/offsite/monitoring и ротация секретов остаются follow-up.
 - Домены `sslip.io` привязаны к IP `176.100.36.107`.
+
+## BUG-017 — code-server `vsda` 404 (upstream)
+
+**Симптом:** в консоли code-server:
+
+```
+/vsda/rust/web/vsda.js 404
+/vsda/rust/web/vsda_bg.wasm 404
+Refused to execute script ... MIME type ('text/plain')
+```
+
+**Причина:** code-server 4.145.2 в workspace-образе не содержит пакет
+`vsda` в `static/node_modules/vsda/rust/web/`. Это upstream-особенность
+сборки code-server, не ошибка Pad/Caddy.
+
+**Влияние:** ошибки в консоли, Microsoft/VSDA-аутентификация в code-server
+не используется; редактор и терминал работают.
+
+**Решение:** не маскировать 404 на Caddy (иначе сломается VSDA, если пакет
+появится). Зафиксировать как upstream-шум; при обновлении code-server
+перепроверить.
+
+## Финальная проверка после исправлений
+
+- `GET /api/workspace/state` → `200`, `state=running`, `username=admin`,
+  `agent=main`.
+- Pad session cookie присутствует, 401 на `/api/workspace/state` больше нет.
+- Coder terminal `@admin/ubuntu.main/terminal` открывается, `.xterm` найден.
+- code-server `@admin/ubuntu.main/apps/code-server/` открывается, title
+  `coder - code-server`.
+- В консоли после логина и открытия терминала: **нет** `PostHog not yet
+  initialized`, **нет** 401/502.
+- Единственные оставшиеся 4xx — два upstream-404 `/vsda/*`.

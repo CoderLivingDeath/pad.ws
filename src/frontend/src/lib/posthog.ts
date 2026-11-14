@@ -29,10 +29,9 @@ export const initializePostHog = (config: PostHogConfigKeys) => {
 };
 
 export const capture = (eventName: string, properties?: Record<string, any>) => {
-  if (!isPostHogInitialized) {
-    console.warn(`[pad.ws] PostHog not yet initialized. Event "${eventName}" was not captured.`);
-    return;
-  }
+  // Analytics is optional. Do not spam the console when no PostHog key is
+  // configured for this deployment.
+  if (!isPostHogInitialized) return;
   posthog.capture(eventName, properties);
 };
 
