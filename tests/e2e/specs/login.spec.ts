@@ -59,9 +59,10 @@ test.describe('login', () => {
     expect(isOnKeycloakLogin(page)).toBe(true);
 
     await submitKeycloakCredentials(page, creds.username, creds.password);
-    await page.waitForURL((url) => url.hostname === padHostname && url.href.includes(`/pad/${padId}`), {
-      timeout: 15000,
-    });
+    await page.waitForURL(
+      (url) => url.hostname === padHostname && url.pathname.startsWith(`/pad/${padId}`),
+      { timeout: 15000 }
+    );
 
     // The browser must end on the requested pad URL and the SPA must load the pad.
     expect(page.url()).toContain(`/pad/${padId}`);

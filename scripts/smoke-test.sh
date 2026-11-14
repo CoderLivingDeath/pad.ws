@@ -167,7 +167,12 @@ else
         else
             form_action=${form_action_line#action=\"}
             form_action=${form_action%\"}
-            form_action=${form_action//&amp;/&}
+            # Decode any HTML entities in the form action (e.g. &amp; -> &).
+            if command -v python3 >/dev/null 2>&1; then
+                form_action=$(python3 -c 'import html,sys; print(html.unescape(sys.argv[1]))' "$form_action")
+            else
+                form_action=${form_action//&amp;/&}
+            fi
 
             # Submit credentials and follow the OIDC callback chain.
             if curl "${CURL_OPTS[@]}" -c "$jar" -b "$jar" -L -D "$login_headers" -o /dev/null \
