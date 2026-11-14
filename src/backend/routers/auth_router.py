@@ -31,6 +31,7 @@ from dependencies import optional_auth, UserSession
 from domain.session import Session, OIDC_STATE_TTL
 from database.database import async_session
 from domain.user import User
+from cache import RedisClient
 
 auth_router = APIRouter()
 
@@ -322,6 +323,14 @@ async def logout(request: Request, session_domain: Session = Depends(get_session
         session_data = await session_domain.get(session_id)
         await session_domain.track_event(session_id, 'logout')
         await session_domain.delete(session_id)
+
+        # Notify any open WebSocket connections for this session to close
+        # immediately instead of waiting for the next revalidation interval.
+        try:
+            redis_client = await RedisClient.get_instance()
+            await redis_client.publish(f"session:revoke:{session_id}", "revoked")
+        except Exception:
+            pass
 
     logout_params = {}
     if session_data and session_data.get("id_token"):
