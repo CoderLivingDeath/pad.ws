@@ -37,17 +37,17 @@
 - [x] 3.3 Add `make test-coverage` that runs backend and frontend coverage and writes `coverage/backend` and `coverage/frontend`. Verify both reports open locally.
 - [x] 3.4 Add `coverage/baseline.json` and a ratchet check that fails on more than a one-point drop. Verify a deliberately lowered suite fails.
 - [x] 3.5 Add `scripts/check-traceability.py` for requirements, Use Cases and tests. Verify a missing P0 UC or an unmapped blocking scenario fails.
-- [ ] 3.6 Add coverage and traceability to CI with artifact upload and a pull-request summary. Verify the summary links the reports and the checks are required.
+- [x] 3.6 Add coverage and traceability to CI with artifact upload and a pull-request summary. Verify the summary links the reports and the checks are required.
 - [x] 3.7 Add tests for the uncovered security-critical modules until their thresholds pass: auth/session, verify, Coder API errors, route authorization, WebSocket revocation.
 - [x] 3.8 Add frontend tests for auth/session/collab hooks and critical UI paths until their thresholds pass; document any justified exclusion.
 
 ## 4. Use Cases and E2E
 
-- [ ] 4.1 Write `docs/use-cases.md` with UC-01…UC-10: actor, preconditions, main flow, alternate/error flow, expected result, linked requirements, test path and gate. Verify every P0 UC is present.
-- [ ] 4.2 Add Playwright specs for user UCs (`uc-01`…`uc-07`) and deployment-harness tests for operator UCs (`tests/deploy/uc-08`…`uc-10`); no P0 test may be silently skipped. Verify the traceability check sees every UC.
-- [ ] 4.3 Cover negative/alternate flows for UC-01 (replayed state), UC-06 (replay/user switch), UC-07 (non-admin/out-of-allowlist), UC-08 (failed deploy), UC-09 (failed upgrade rollback).
-- [ ] 4.4 Bind UC test results to `docs/testing.md` and `docs/use-cases.md`; verify the traceability checker sees the mapping.
-- [ ] 4.5 Add stable `data-testid`/role selectors where needed; remove text-only assertions that cause flakiness. Verify the full E2E suite passes three consecutive runs.
+- [x] 4.1 Write `docs/use-cases.md` with UC-01…UC-10: actor, preconditions, main flow, alternate/error flow, expected result, linked requirements, test path and gate. Verify every P0 UC is present.
+- [x] 4.2 Add Playwright specs for user UCs (`uc-01`…`uc-07`) and deployment-harness tests for operator UCs (`tests/deploy/uc-08`…`uc-10`); no P0 test may be silently skipped. Verify the traceability check sees every UC.
+- [x] 4.3 Cover negative/alternate flows for UC-01 (replayed state), UC-06 (replay/user switch), UC-07 (non-admin/out-of-allowlist), UC-08 (failed deploy), UC-09 (failed upgrade rollback).
+- [x] 4.4 Bind UC test results to `docs/testing.md` and `docs/use-cases.md`; verify the traceability checker sees the mapping.
+- [x] 4.5 Add stable `data-testid`/role selectors where needed; remove text-only assertions that cause flakiness. Verify the full E2E suite passes three consecutive runs.
 
 ## 5. CI quality gates (CD deferred)
 
