@@ -20,6 +20,9 @@ test-deploy:
 	@bash tests/deploy/run-checks.sh || { echo "Deploy checks require docker compose and a running or staging environment"; exit 1; }
 	@bash tests/deploy/test-config-resolution.sh || { echo "Config resolution checks failed"; exit 1; }
 	@bash tests/deploy/test-restore-drill.sh || { echo "Restore drill checks failed"; exit 1; }
+	@bash tests/deploy/test-env-merge.sh || { echo ".env merge checks failed"; exit 1; }
+	@bash tests/deploy/test-upgrade-rollback-images.sh || { echo "Upgrade/rollback image checks failed"; exit 1; }
+	@bash tests/deploy/test-upgrade-rollback-state.sh || { echo "Upgrade/rollback state checks failed"; exit 1; }
 
 test-env:
 	@bash scripts/test-env.sh up
