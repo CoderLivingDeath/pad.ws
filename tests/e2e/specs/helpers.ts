@@ -84,23 +84,120 @@ export async function keycloakLogin(
 }
 
 /**
- * Log out of Pad using the Excalidraw main menu.
+ * Open the Excalidraw main menu and select Logout.
  */
 export async function logoutFromPad(page: Page): Promise<void> {
-  await page.locator('.tabs-bar').waitFor({ state: 'visible', timeout: 15000 });
-  await page.waitForTimeout(500);
-  const menuTrigger = page.locator('[aria-label="Menu"], .main-menu-trigger, .dropdown-menu-button').first();
-  const logoutItem = page.locator('.dropdown-menu-item').filter({ hasText: 'Logout' }).last();
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (await logoutItem.isVisible().catch(() => false)) break;
-    await menuTrigger.click({ force: true }).catch(() => undefined);
-    await page.waitForTimeout(300);
-  }
-  await logoutItem.waitFor({ state: 'visible', timeout: 5000 });
-  const authHostname = new URL(getBaseUrls().auth).hostname;
-  await logoutItem.dispatchEvent('click');
-  await page
-    .waitForURL((url) => url.hostname === authHostname, { timeout: 15000 })
-    .catch(() => undefined);
+  await expect(page.locator('[data-testid="new-pad-button"]')).toBeVisible({ timeout: 15000 });
+  const menuTrigger = page.getByRole('button', { name: /menu/i }).first();
+  await expect(menuTrigger).toBeVisible({ timeout: 5000 });
+  await menuTrigger.click();
+
+  const logoutItem = page.locator('[data-testid="logout-menu-item"]');
+  await expect(logoutItem).toBeVisible({ timeout: 5000 });
+  await logoutItem.click();
+
   await page.waitForLoadState('networkidle').catch(() => undefined);
+}
+
+/**
+ * Create a new pad through the authenticated backend API using the browser's cookies.
+ */
+export async function createPadViaApi(page: Page, name?: string): Promise<string> {
+  const pad = await page.evaluate(async () => {
+    const response = await fetch('/api/pad/new', { method: 'POST' });
+    if (!response.ok) throw new Error(`Failed to create pad: ${response.status}`);
+    return response.json();
+  });
+  expect(pad).toHaveProperty('id');
+  const padId = pad.id as string;
+
+  if (name) {
+    await page.evaluate(
+      async ({ id, displayName }) => {
+        const response = await fetch(`/api/pad/${id}/rename`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ display_name: displayName }),
+        });
+        if (!response.ok) throw new Error(`Failed to rename pad: ${response.status}`);
+      },
+      { id: padId, displayName: name }
+    );
+  }
+
+  return padId;
+}
+
+/**
+ * Fetch the current workspace state through the backend API.
+ */
+export async function fetchWorkspaceState(page: Page): Promise<{
+  id: string;
+  state: string;
+  name: string;
+  username: string;
+  base_url: string;
+  agent: string;
+}> {
+  const response = await page.request.get('/api/workspace/state', {
+    headers: { Accept: 'application/json' },
+  });
+  expect(response.ok(), `workspace state failed: ${response.status()}`).toBeTruthy();
+  return response.json() as Promise<{
+    id: string;
+    state: string;
+    name: string;
+    username: string;
+    base_url: string;
+    agent: string;
+  }>;
+}
+
+/**
+ * Set a pad's sharing policy through the backend API.
+ */
+export async function setPadSharingPolicy(
+  page: Page,
+  padId: string,
+  policy: 'private' | 'whitelist' | 'public'
+): Promise<void> {
+  const response = await page.request.put(`/api/pad/${padId}/sharing`, {
+    headers: { 'Content-Type': 'application/json' },
+    data: { policy },
+  });
+  expect(response.ok(), `failed to set sharing policy: ${response.status()}`).toBeTruthy();
+}
+
+/**
+ * Open a WebSocket to the collaboration endpoint from within the page context.
+ * Returns a promise that resolves when the socket opens or rejects on error/timeout.
+ */
+export function openCollaborationSocket(page: Page, padId: string): Promise<boolean> {
+  return page.evaluate(
+    (id) =>
+      new Promise<boolean>((resolve) => {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const url = `${protocol}//${window.location.host}/ws/pad/${id}`;
+        const socket = new WebSocket(url);
+        let settled = false;
+        const done = (ok: boolean) => {
+          if (settled) return;
+          settled = true;
+          try {
+            socket.close();
+          } catch {
+            // ignore
+          }
+          resolve(ok);
+        };
+        socket.onopen = () => done(true);
+        socket.onerror = () => done(false);
+        socket.onclose = (event) => {
+          if (event.code === 1000 || event.code === 1001) done(true);
+          else if (!settled) done(false);
+        };
+        setTimeout(() => done(false), 5000);
+      }),
+    padId
+  );
 }
