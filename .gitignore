@@ -12,5 +12,6 @@ caddy-root.crt
 .env.test
 backups/
 .tmp-backup-check/
+.deploy-state/
 tests/e2e/test-results/
 tests/e2e/playwright-report/
