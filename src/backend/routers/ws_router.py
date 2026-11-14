@@ -306,6 +306,41 @@ async def consume_pointer_updates(redis_client: aioredis.Redis, pad_id: UUID,
             pass
 
 
+async def consume_session_revocation(redis_client: aioredis.Redis, session_id: str, websocket: WebSocket):
+    """Listen for a server-side session revocation signal and close the socket immediately."""
+    if not session_id:
+        return
+
+    channel = f"session:revoke:{session_id}"
+    pubsub = redis_client.pubsub()
+
+    try:
+        await pubsub.subscribe(channel)
+
+        while websocket.client_state.CONNECTED:
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if message and message.get("type") == "message":
+                reason = "Session revoked"
+                try:
+                    await websocket.close(code=4001, reason=reason)
+                except Exception:
+                    pass
+                break
+
+            # Prevent CPU hogging
+            await asyncio.sleep(0)
+
+    except Exception as e:
+        if websocket.client_state.CONNECTED:
+            print(f"Error in session revocation listener for {session_id[:5]}: {e}")
+    finally:
+        try:
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
+        except Exception:
+            pass
+
+
 async def add_connection(redis_client: aioredis.Redis, pad_id: UUID, user_id: str, 
                          username: str, connection_id: str) -> None:
     """Add a user connection to the pad users hash in Redis."""
@@ -406,6 +441,7 @@ async def websocket_endpoint(
             connection_id = str(uuid.uuid4())
             stream_key = f"pad:stream:{pad_id}"
             redis_client = await RedisClient.get_instance()
+            session_id = websocket.cookies.get(SESSION_COOKIE_NAME)
 
             await add_connection(redis_client, pad_id, str(user.id), user.username, connection_id)
 
@@ -464,10 +500,13 @@ async def websocket_endpoint(
             auth_task = asyncio.create_task(
                 periodic_auth_check(websocket, pad_id, user, redis_client, stream_key, connection_id, session)
             )
-            
+            revoke_task = asyncio.create_task(
+                consume_session_revocation(redis_client, session_id, websocket)
+            )
+
             # Wait for any task to complete
             done, pending = await asyncio.wait(
-                [ws_task, redis_task, pointer_task, auth_task],
+                [ws_task, redis_task, pointer_task, auth_task, revoke_task],
                 return_when=asyncio.FIRST_COMPLETED
             )
             
